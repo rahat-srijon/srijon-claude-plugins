@@ -1,0 +1,16 @@
+{
+  "name": "claudio-notify",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Audio notifications for Claude Code: distinct, customizable sounds when tasks finish, subagents start or stop, Claude asks a question, or needs permission — per model.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Md. Rahat Islam",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test scripts/test/",
+    "gen-sounds": "node scripts/gen-sounds.js"
+  }
+}

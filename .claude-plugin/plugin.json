@@ -1,0 +1,17 @@
+{
+  "name": "claudio-notify",
+  "version": "0.1.0",
+  "description": "Audio notifications for Claude Code: distinct, customizable sounds when tasks finish, subagents start or stop, Claude asks a question, or needs permission — per model.",
+  "author": {
+    "name": "Md. Rahat Islam"
+  },
+  "license": "MIT",
+  "keywords": [
+    "notifications",
+    "sound",
+    "audio",
+    "hooks",
+    "subagents",
+    "productivity"
+  ]
+}
