@@ -10,7 +10,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test scripts/test/",
+    "test": "node --test",
     "gen-sounds": "node scripts/gen-sounds.js"
   }
 }
