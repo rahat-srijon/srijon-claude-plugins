@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-23
 
 ### Added
 
@@ -21,3 +21,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Global config in the plugin data directory and a per-project override in `.claude/claudio.json`.
 - Playback on Windows (PowerShell), macOS (`afplay`) and Linux (`paplay`, `pw-play`, `ffplay`, `aplay`).
 - A rotating log file that never writes to the conversation.
+
+[0.1.0]: https://github.com/rahat-srijon/claudio-notify/releases/tag/v0.1.0
