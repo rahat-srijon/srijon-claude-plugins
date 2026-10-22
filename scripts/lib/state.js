@@ -229,10 +229,11 @@ export function tryAcquire(dataDir, key, cooldownMs, now = Date.now()) {
     if (fd !== null) {
       try {
         fs.closeSync(fd);
-      } catch {
-        // Nothing useful to do; the removal below still releases the mutex.
+        fs.rmSync(mutexFile, { force: true });
+      } catch (err) {
+        // A leftover mutex goes stale and is reclaimed by the next caller.
+        log('debug', `state: cannot release mutex for ${name}`, err);
       }
-      fs.rmSync(mutexFile, { force: true });
     }
   }
 }
