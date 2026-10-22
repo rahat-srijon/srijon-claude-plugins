@@ -236,6 +236,12 @@ describe('modelFromAgentDefinition', () => {
     assert.equal(modelFromAgentDefinition('myplugin:reviewer', { homeDir: home }), 'opus');
   });
 
+  it('never matches an agent whose name is empty', () => {
+    const home = tempDir();
+    writeAgent(home, 'blank.md', '---\nname:\nmodel: opus\n---\n');
+    assert.equal(modelFromAgentDefinition('myplugin:', { homeDir: home }), null);
+  });
+
   it('strips quotes from values', () => {
     const home = tempDir();
     installFixture(home, 'quoted.md', 'agent-quoted.md');
