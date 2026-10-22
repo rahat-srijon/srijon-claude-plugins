@@ -189,7 +189,7 @@ export function modelFromAgentDefinition(agentType, { projectDir, homeDir = os.h
         } catch {
           continue;
         }
-        if (!fields || (fields.name !== agentType && fields.name !== shortName)) {
+        if (!fields?.name || (fields.name !== agentType && fields.name !== shortName)) {
           continue;
         }
         const model = fields.model;
