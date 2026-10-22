@@ -1,0 +1,1490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>claudio-notify settings</title>
+<style>
+  :root {
+    --bg: #f3f4f7;
+    --surface: #ffffff;
+    --surface-2: #f7f8fa;
+    --border: #dfe2e8;
+    --text: #1c2030;
+    --muted: #5d6475;
+    --accent: #4257d6;
+    --accent-hover: #3446b8;
+    --accent-soft: #e6e9fb;
+    --on-accent: #ffffff;
+    --track: #c5cad5;
+    --warn: #8a5a00;
+    --warn-soft: #fdf1d8;
+    --danger: #b3261e;
+    --danger-soft: #fbe5e3;
+    --ok: #1d7a46;
+    --focus: #4257d6;
+    --shadow: 0 1px 2px rgb(20 24 40 / 6%), 0 1px 8px rgb(20 24 40 / 4%);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --s1: 4px;
+    --s2: 8px;
+    --s3: 16px;
+    --s4: 24px;
+    --s5: 32px;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141b;
+      --surface: #1b1e27;
+      --surface-2: #222632;
+      --border: #2f3442;
+      --text: #e7e9f0;
+      --muted: #9aa1b2;
+      --accent: #8b9cff;
+      --accent-hover: #a5b2ff;
+      --accent-soft: #272d4d;
+      --on-accent: #10131f;
+      --track: #454b5c;
+      --warn: #f2c063;
+      --warn-soft: #3a2e14;
+      --danger: #ff8a80;
+      --danger-soft: #3e1f1d;
+      --ok: #6fd39b;
+      --focus: #a5b2ff;
+      --shadow: 0 1px 2px rgb(0 0 0 / 30%);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  [hidden] { display: none !important; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 var(--font);
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, p { margin: 0; }
+
+  button, input, select { font: inherit; color: inherit; }
+
+  code { font-family: var(--mono); font-size: 0.92em; }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  .vh {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--s4) var(--s3) var(--s5);
+  }
+
+  .shell.is-disabled { opacity: 0.55; filter: grayscale(0.4); }
+
+  /* Banner */
+  .banner {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: var(--s2) var(--s3);
+    background: var(--danger);
+    color: var(--surface);
+    text-align: center;
+    font-weight: 600;
+  }
+
+  /* Header */
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    margin-bottom: var(--s3);
+  }
+
+  .brand h1 { font-size: 1.35rem; letter-spacing: -0.01em; }
+
+  .status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s1) var(--s3);
+    margin-top: var(--s1);
+    color: var(--muted);
+    font-size: 0.84rem;
+  }
+
+  .status .warn { color: var(--warn); font-weight: 600; }
+
+  .top-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2) var(--s3);
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: var(--s3);
+  }
+
+  .stack > * + * { margin-top: var(--s3); }
+
+  .section-title {
+    margin: var(--s4) 0 var(--s2);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .card h2 { font-size: 1rem; }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s2);
+  }
+
+  .card-head h3 { font-size: 1rem; font-weight: 600; }
+
+  .events { display: grid; gap: var(--s2); }
+
+  .event.is-off .event-body { opacity: 0.6; }
+
+  .event-body { margin-top: var(--s2); display: grid; gap: var(--s2); }
+
+  .hint { color: var(--muted); font-size: 0.84rem; }
+
+  /* Rows and fields */
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2);
+  }
+
+  .row-label { min-width: 72px; color: var(--muted); font-size: 0.9rem; }
+
+  .grow { flex: 1 1 200px; min-width: 0; }
+
+  .grow > select { width: 100%; }
+
+  .field-label { display: block; margin-bottom: var(--s1); font-weight: 500; }
+
+  .inline-field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2);
+  }
+
+  select,
+  input[type="text"],
+  input[type="number"],
+  input[type="time"] {
+    min-height: 36px;
+    padding: 6px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    max-width: 100%;
+  }
+
+  select { padding-right: 28px; }
+
+  select:hover,
+  input[type="text"]:hover,
+  input[type="number"]:hover,
+  input[type="time"]:hover { border-color: var(--track); }
+
+  input[type="number"] { width: 96px; }
+
+  input[type="text"] { width: 100%; }
+
+  input:disabled, select:disabled { opacity: 0.5; }
+
+  [aria-invalid="true"] { border-color: var(--danger) !important; }
+
+  .field-error { color: var(--danger); font-size: 0.84rem; }
+
+  input[type="range"] {
+    flex: 1 1 160px;
+    min-width: 0;
+    accent-color: var(--accent);
+  }
+
+  input[type="checkbox"]:not([role="switch"]) {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+  }
+
+  output { min-width: 3.5ch; font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
+
+  .check { display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; }
+
+  /* Switch */
+  .switch { display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; }
+
+  input[role="switch"] {
+    appearance: none;
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 24px;
+    margin: 0;
+    border-radius: 12px;
+    background: var(--track);
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+
+  input[role="switch"]::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+    transition: transform 0.15s;
+  }
+
+  input[role="switch"]:checked { background: var(--accent); }
+
+  input[role="switch"]:checked::after { transform: translateX(16px); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s2);
+    min-height: 36px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .btn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--track); }
+
+  .btn:disabled { opacity: 0.55; cursor: default; }
+
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+  .btn-danger { color: var(--danger); }
+
+  .btn-danger-solid { background: var(--danger); border-color: var(--danger); color: var(--surface); }
+
+  .btn-danger-solid:hover:not(:disabled) { background: var(--danger); filter: brightness(1.08); }
+
+  .btn-small { min-height: 30px; padding: 2px 10px; font-size: 0.875rem; }
+
+  .mute[aria-pressed="true"] {
+    background: var(--warn-soft);
+    border-color: var(--warn);
+    color: var(--warn);
+    font-weight: 600;
+  }
+
+  .play {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .play:hover:not(:disabled) { border-color: var(--accent); }
+
+  .play[aria-busy="true"] { cursor: progress; }
+
+  .play[aria-busy="true"] .glyph { visibility: hidden; }
+
+  .play[aria-busy="true"]::after {
+    content: "";
+    position: absolute;
+    inset: 9px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .play[aria-busy="true"]::after { animation-duration: 2s; }
+    input[role="switch"], input[role="switch"]::after { transition: none; }
+  }
+
+  /* Per-model */
+  details.per-model {
+    border-top: 1px solid var(--border);
+    padding-top: var(--s2);
+  }
+
+  details.per-model summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-radius: 4px;
+    width: fit-content;
+  }
+
+  details.per-model summary:hover { color: var(--text); }
+
+  .model-rows { display: grid; gap: var(--s2); margin-top: var(--s2); }
+
+  .model-rows .row-label { text-transform: capitalize; }
+
+  /* Sounds */
+  .drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--s1);
+    padding: var(--s4) var(--s3);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .drop:hover, .drop.is-over { border-color: var(--accent); background: var(--accent-soft); }
+
+  .drop:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .drop strong { color: var(--accent); }
+
+  .upload-status { font-size: 0.875rem; }
+
+  .upload-status[data-kind="error"] { color: var(--danger); }
+
+  .upload-status[data-kind="ok"] { color: var(--ok); }
+
+  .list { list-style: none; margin: 0; padding: 0; }
+
+  .list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2);
+    padding: var(--s2) 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .list li:first-child { border-top: 0; }
+
+  .list .name { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+
+  .tag {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+
+  .family-name { flex: 0 1 120px; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+
+  .add-family { display: grid; gap: var(--s2); grid-template-columns: 1fr 1fr auto; align-items: end; }
+
+  /* Footer */
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    margin-top: var(--s4);
+  }
+
+  .foot .actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+  .path { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: var(--s3);
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    max-width: calc(100vw - 2 * var(--s3));
+    padding: var(--s2) var(--s3);
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+    font-size: 0.9rem;
+  }
+
+  .toast[data-kind="error"] { border-radius: var(--radius); background: var(--danger); color: var(--surface); }
+
+  .toast button {
+    padding: 2px 10px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  .center-message { padding: 15vh var(--s3); text-align: center; }
+
+  .center-message p + p { margin-top: var(--s2); color: var(--muted); }
+
+  @media (max-width: 520px) {
+    .wrap { padding: var(--s3) var(--s3) var(--s5); }
+    .add-family { grid-template-columns: 1fr; }
+    .row-label { min-width: 0; flex-basis: 100%; }
+    .row > .grow { flex-basis: 0; }
+    .model-rows .row-label { flex-basis: auto; min-width: 64px; }
+  }
+</style>
+</head>
+<body>
+<div id="banner" class="banner" role="alert" hidden>Settings server stopped. Run /claudio-notify:config again.</div>
+<div id="shell" class="shell wrap">
+  <p class="center-message" role="status">Loading settings…</p>
+</div>
+<div id="done" class="center-message" tabindex="-1" hidden>
+  <p><strong>Saved. You can close this tab.</strong></p>
+</div>
+<div id="toast" class="toast" aria-live="polite" hidden>
+  <span id="toast-text"></span>
+  <button id="toast-action" type="button" hidden></button>
+</div>
+<script>
+'use strict';
+
+const token = new URLSearchParams(location.search).get('token') ?? '';
+
+const SAVE_DELAY_MS = 400;
+const HEARTBEAT_MS = 30_000;
+const OK_TOAST_MS = 1800;
+const ERROR_TOAST_MS = 6000;
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const UPLOAD_EXT_RE = /\.(?:wav|mp3)$/i;
+const FAMILY_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+const RESERVED_FAMILIES = new Set(['other']);
+const SOUND_GROUPS = [['bundled', 'Built-in'], ['user', 'Your sounds'], ['tts', 'Speech']];
+const UPLOAD_ERRORS = {
+  400: 'That file name is not allowed.',
+  413: 'That file is larger than 5 MiB.',
+  415: 'That file is not a real WAV or MP3.',
+};
+
+const dom = {
+  shell: document.getElementById('shell'),
+  banner: document.getElementById('banner'),
+  done: document.getElementById('done'),
+  toast: document.getElementById('toast'),
+  toastText: document.getElementById('toast-text'),
+  toastAction: document.getElementById('toast-action'),
+};
+
+const ui = {
+  meta: null,
+  state: null,
+  sounds: [],
+  savedFamilies: [],
+  builtInFamilies: new Set(),
+  openDetails: new Set(),
+  drafts: new Map(),
+  busy: new Set(),
+  confirmDelete: null,
+  familyDraft: { name: '', pattern: '', error: '' },
+  upload: { busy: '', text: '', kind: '' },
+  testing: '',
+  stopped: false,
+  closed: false,
+};
+
+const save = { timer: 0, version: 0, savedVersion: 0, inFlight: null, queued: false };
+
+let heartbeatTimer = 0;
+let toastTimer = 0;
+
+/* ---------- DOM helpers ---------- */
+
+function h(tag, props = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (value === undefined || value === null || value === false) {
+      continue;
+    }
+    if (key === 'class') {
+      el.className = value;
+    } else if (key === 'text') {
+      el.textContent = value;
+    } else if (key.startsWith('on')) {
+      el.addEventListener(key.slice(2), value);
+    } else if (key in el && !key.includes('-')) {
+      el[key] = value;
+    } else {
+      el.setAttribute(key, value === true ? '' : value);
+    }
+  }
+  el.append(...children.flat().filter((child) => child !== null && child !== undefined && child !== false));
+  return el;
+}
+
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function fileName(spec) {
+  return spec.replace(/^user:/, '').split(/[\\/]/).pop();
+}
+
+function percent(volume) {
+  return `${Math.round(volume * 100)}%`;
+}
+
+/* ---------- API ---------- */
+
+class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function api(path, { method = 'GET', json, body, headers = {} } = {}) {
+  const init = { method, headers: { 'X-Claudio-Token': token, ...headers } };
+  if (json !== undefined) {
+    init.body = JSON.stringify(json);
+    init.headers['Content-Type'] = 'application/json';
+  } else if (body !== undefined) {
+    init.body = body;
+  }
+  let res;
+  try {
+    res = await fetch(path, init);
+  } catch {
+    if (path !== '/api/ping') {
+      heartbeat();
+    }
+    throw new ApiError('Cannot reach the settings server.', 0);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new ApiError(data?.error || `Request failed (${res.status}).`, res.status);
+  }
+  return data;
+}
+
+/* ---------- Saving ---------- */
+
+function markChanged() {
+  save.version += 1;
+  clearTimeout(save.timer);
+  save.timer = setTimeout(runSave, SAVE_DELAY_MS);
+}
+
+function isDirty() {
+  return save.version !== save.savedVersion;
+}
+
+function runSave() {
+  clearTimeout(save.timer);
+  if (save.inFlight) {
+    save.queued = true;
+    return save.inFlight;
+  }
+  save.inFlight = putConfig().finally(() => {
+    save.inFlight = null;
+    if (save.queued) {
+      save.queued = false;
+      runSave();
+    }
+  });
+  return save.inFlight;
+}
+
+async function putConfig() {
+  const version = save.version;
+  const sent = JSON.stringify(ui.state);
+  try {
+    const { config } = await api('/api/config', {
+      method: 'PUT',
+      body: sent,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    save.savedVersion = Math.max(save.savedVersion, version);
+    if (save.version === version) {
+      adoptConfig(config, sent);
+    }
+    showToast('Saved ✓', 'ok');
+    return true;
+  } catch (err) {
+    showToast(`Not saved: ${err.message}`, 'error', { label: 'Retry', run: runSave });
+    return false;
+  }
+}
+
+async function flushSave() {
+  clearTimeout(save.timer);
+  while (save.inFlight) {
+    await save.inFlight;
+  }
+  return isDirty() ? runSave() : true;
+}
+
+function adoptConfig(config, sent) {
+  const familiesBefore = ui.savedFamilies.join('\n');
+  setConfig(config);
+  if (JSON.stringify(config) !== sent || ui.savedFamilies.join('\n') !== familiesBefore) {
+    render();
+  }
+}
+
+function setConfig(config) {
+  ui.state = config;
+  ui.savedFamilies = Object.keys(config.modelPatterns);
+}
+
+/* ---------- Heartbeat and lifecycle ---------- */
+
+async function heartbeat() {
+  try {
+    await api('/api/ping');
+    setStopped(false);
+  } catch {
+    setStopped(true);
+  }
+}
+
+function setStopped(stopped) {
+  if (ui.closed || ui.stopped === stopped) {
+    return;
+  }
+  ui.stopped = stopped;
+  dom.banner.hidden = !stopped;
+  dom.shell.inert = stopped;
+  dom.shell.classList.toggle('is-disabled', stopped);
+}
+
+async function finish(button) {
+  button.disabled = true;
+  if (!(await flushSave())) {
+    button.disabled = false;
+    return;
+  }
+  ui.closed = true;
+  clearInterval(heartbeatTimer);
+  try {
+    await api('/api/close', { method: 'POST' });
+  } catch {
+    // The server may already be gone; the settings were saved either way.
+  }
+  dom.shell.hidden = true;
+  dom.banner.hidden = true;
+  dom.toast.hidden = true;
+  dom.done.hidden = false;
+  dom.done.focus();
+}
+
+function onPageHide() {
+  if (ui.closed) {
+    return;
+  }
+  if (ui.state && isDirty()) {
+    fetch('/api/config', {
+      method: 'PUT',
+      keepalive: true,
+      headers: { 'X-Claudio-Token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(ui.state),
+    }).catch(() => {});
+  }
+  navigator.sendBeacon(`/api/close?token=${encodeURIComponent(token)}`);
+}
+
+/* ---------- Toast ---------- */
+
+function showToast(text, kind, action) {
+  clearTimeout(toastTimer);
+  dom.toast.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+  dom.toast.dataset.kind = kind;
+  dom.toastText.textContent = text;
+  dom.toastAction.hidden = !action;
+  dom.toastAction.textContent = action?.label ?? '';
+  dom.toastAction.onclick = action ? () => { hideToast(); action.run(); } : null;
+  dom.toast.hidden = false;
+  if (!action) {
+    toastTimer = setTimeout(hideToast, kind === 'ok' ? OK_TOAST_MS : ERROR_TOAST_MS);
+  }
+}
+
+function hideToast() {
+  dom.toast.hidden = true;
+}
+
+/* ---------- Preview ---------- */
+
+function setPreviewBusy(key, busy) {
+  for (const button of document.querySelectorAll('.play')) {
+    if (button.dataset.preview === key) {
+      button.setAttribute('aria-busy', String(busy));
+    }
+  }
+}
+
+async function preview(key, body) {
+  if (ui.busy.has(key)) {
+    return;
+  }
+  ui.busy.add(key);
+  setPreviewBusy(key, true);
+  try {
+    await api('/api/preview', { method: 'POST', json: body });
+  } catch (err) {
+    showToast(`Preview failed: ${err.message}`, 'error');
+  } finally {
+    ui.busy.delete(key);
+    setPreviewBusy(key, false);
+  }
+}
+
+function eventVolume(eventId) {
+  return ui.state.events[eventId].volume ?? ui.state.volume;
+}
+
+function previewEvent(eventId, family) {
+  const event = ui.state.events[eventId];
+  const sound = (family && event.byModel?.[family]) || event.sound;
+  const body = { sound, event: eventId, volume: eventVolume(eventId) };
+  if (family) {
+    body.family = family;
+  }
+  return preview(family ? `${eventId}:${family}` : eventId, body);
+}
+
+function previewUserSound(id) {
+  const event = ui.meta.events[0]?.id;
+  return preview(`sound:${id}`, { sound: id, event, volume: ui.state.volume });
+}
+
+function playButton(key, label, onClick) {
+  return h('button', {
+    type: 'button',
+    class: 'play',
+    'aria-label': label,
+    'aria-busy': String(ui.busy.has(key)),
+    'data-preview': key,
+    onclick: onClick,
+  }, h('span', { class: 'glyph', 'aria-hidden': 'true', text: '▶' }));
+}
+
+async function testAll() {
+  const ids = ui.meta.events.map((e) => e.id).filter((id) => ui.state.events[id].enabled);
+  for (const [index, id] of ids.entries()) {
+    ui.testing = `Playing ${index + 1}/${ids.length}…`;
+    updateTestButton();
+    await previewEvent(id);
+  }
+  ui.testing = '';
+  updateTestButton();
+}
+
+function updateTestButton() {
+  const button = document.getElementById('test-all');
+  if (button) {
+    button.disabled = Boolean(ui.testing);
+    button.textContent = ui.testing || 'Test all';
+  }
+}
+
+/* ---------- Generic controls ---------- */
+
+function switchControl({ id, label, checked, onChange, hideLabel = false }) {
+  const input = h('input', {
+    type: 'checkbox',
+    role: 'switch',
+    id,
+    checked,
+    onchange: (e) => onChange(e.target.checked),
+  });
+  return h('label', { class: 'switch', for: id },
+    h('span', { class: hideLabel ? 'vh' : null, text: label }),
+    input);
+}
+
+function soundSelect(id, current, { inherit = false, labelledBy } = {}) {
+  const select = h('select', { id, 'aria-labelledby': labelledBy });
+  if (inherit) {
+    select.append(h('option', { value: '', text: 'Same as above' }));
+  }
+  for (const [source, label] of SOUND_GROUPS) {
+    const items = ui.sounds.filter((s) => s.source === source);
+    if (items.length) {
+      select.append(h('optgroup', { label }, items.map((s) => h('option', { value: s.id, text: s.label }))));
+    }
+  }
+  if (current && !ui.sounds.some((s) => s.id === current)) {
+    select.append(h('option', { value: current, title: current, text: `Custom file: ${fileName(current)}` }));
+  }
+  select.value = current ?? '';
+  return select;
+}
+
+function rangeControl({ id, value, label, onInput }) {
+  const output = h('output', { for: id, text: percent(value) });
+  const input = h('input', {
+    type: 'range',
+    id,
+    min: 0,
+    max: 100,
+    step: 1,
+    value: Math.round(value * 100),
+    'aria-label': label,
+    oninput: (e) => {
+      const volume = Number(e.target.value) / 100;
+      output.textContent = percent(volume);
+      e.target.setAttribute('aria-valuetext', percent(volume));
+      onInput(volume);
+    },
+  });
+  input.setAttribute('aria-valuetext', percent(value));
+  return [input, output];
+}
+
+function countInput({ id, value, label, onValid }) {
+  return h('input', {
+    type: 'number',
+    id,
+    min: 0,
+    step: 1,
+    inputMode: 'numeric',
+    value: String(value),
+    'aria-label': label,
+    oninput: (e) => {
+      const n = Number(e.target.value);
+      const valid = e.target.value !== '' && Number.isInteger(n) && n >= 0;
+      e.target.setAttribute('aria-invalid', String(!valid));
+      if (valid) {
+        onValid(n);
+      }
+    },
+  });
+}
+
+/* A text field that only commits valid values; invalid input is kept as a draft. */
+function textInput({ id, value, label, describedBy, isValid, onValid }) {
+  const draft = ui.drafts.get(id);
+  const input = h('input', {
+    type: 'text',
+    id,
+    value: draft ?? value,
+    autocomplete: 'off',
+    'aria-label': label,
+    'aria-describedby': describedBy,
+    'aria-invalid': String(draft !== undefined),
+    oninput: (e) => {
+      const text = e.target.value;
+      const valid = isValid(text);
+      e.target.setAttribute('aria-invalid', String(!valid));
+      if (valid) {
+        ui.drafts.delete(id);
+        onValid(text);
+      } else {
+        ui.drafts.set(id, text);
+      }
+    },
+  });
+  return input;
+}
+
+function isNonEmpty(text) {
+  return text.trim() !== '';
+}
+
+/* ---------- Sections ---------- */
+
+function renderHeader() {
+  const { meta, state } = ui;
+  const backend = meta.backend
+    ? h('span', { text: `Audio: ${meta.backend}` })
+    : h('span', { class: 'warn', text: 'No audio player found' });
+  const tts = h('span', { text: meta.ttsBackend ? `Speech: ${meta.ttsBackend}` : 'Speech: unavailable' });
+  const mute = h('button', {
+    type: 'button',
+    id: 'mute',
+    class: 'btn mute',
+    'aria-pressed': String(state.muted),
+    text: state.muted ? 'Muted' : 'Mute',
+    onclick: (e) => {
+      const muted = !ui.state.muted;
+      ui.state.muted = muted;
+      e.currentTarget.setAttribute('aria-pressed', String(muted));
+      e.currentTarget.textContent = muted ? 'Muted' : 'Mute';
+      markChanged();
+    },
+  });
+  return h('header', { class: 'top' },
+    h('div', { class: 'brand' },
+      h('h1', { text: 'claudio-notify' }),
+      h('p', { class: 'status' }, backend, tts)),
+    h('div', { class: 'top-controls' },
+      switchControl({
+        id: 'enabled',
+        label: 'Sounds on',
+        checked: state.enabled,
+        onChange: (on) => { ui.state.enabled = on; markChanged(); },
+      }),
+      mute));
+}
+
+function renderGlobal() {
+  const { state } = ui;
+  const quiet = state.quietHours;
+  const timeInput = (key, label) => h('label', { class: 'inline-field', for: `quiet-${key}` },
+    h('span', { text: label }),
+    h('input', {
+      type: 'time',
+      id: `quiet-${key}`,
+      value: quiet[key],
+      disabled: !quiet.enabled,
+      oninput: (e) => {
+        if (/^\d{2}:\d{2}$/.test(e.target.value)) {
+          ui.state.quietHours[key] = e.target.value;
+          markChanged();
+        }
+      },
+    }));
+
+  return h('section', { class: 'card stack', 'aria-labelledby': 'global-title' },
+    h('h2', { id: 'global-title', text: 'General' }),
+    h('div', {},
+      h('label', { class: 'field-label', for: 'volume', text: 'Master volume' }),
+      h('div', { class: 'row' }, rangeControl({
+        id: 'volume',
+        value: state.volume,
+        label: 'Master volume',
+        onInput: (v) => { ui.state.volume = v; markChanged(); },
+      }))),
+    h('div', { class: 'row' },
+      switchControl({
+        id: 'quiet-enabled',
+        label: 'Quiet hours',
+        checked: quiet.enabled,
+        onChange: (on) => {
+          ui.state.quietHours.enabled = on;
+          document.getElementById('quiet-from').disabled = !on;
+          document.getElementById('quiet-to').disabled = !on;
+          markChanged();
+        },
+      }),
+      timeInput('from', 'From'),
+      timeInput('to', 'to')),
+    h('div', { class: 'inline-field' },
+      h('label', { for: 'min-turn', text: 'Only play “finished” if the task took at least' }),
+      countInput({
+        id: 'min-turn',
+        value: state.minTurnSeconds,
+        label: 'Minimum task length in seconds',
+        onValid: (n) => { ui.state.minTurnSeconds = n; markChanged(); },
+      }),
+      h('span', { text: 'seconds' })),
+    h('div', { class: 'inline-field' },
+      h('label', { for: 'cooldown', text: 'Merge repeated sounds within' }),
+      countInput({
+        id: 'cooldown',
+        value: state.cooldownMs,
+        label: 'Merge window in milliseconds',
+        onValid: (n) => { ui.state.cooldownMs = n; markChanged(); },
+      }),
+      h('span', { text: 'ms' })),
+    h('div', {},
+      h('label', { class: 'field-label', for: 'tts-template', text: 'Speech template' }),
+      textInput({
+        id: 'tts-template',
+        value: state.tts.template,
+        describedBy: 'tts-hint',
+        isValid: isNonEmpty,
+        onValid: (text) => { ui.state.tts.template = text; markChanged(); },
+      }),
+      h('p', { class: 'hint', id: 'tts-hint' },
+        'Used by the Speech sound. ',
+        h('code', { text: '{model}' }), ' becomes the model name and ',
+        h('code', { text: '{event}' }), ' the event, e.g. “Opus finished”.')));
+}
+
+function renderEventVolume(eventMeta, label) {
+  const id = eventMeta.id;
+  const volume = ui.state.events[id].volume;
+  const useGlobal = volume === null;
+  const toggle = h('label', { class: 'check', for: `${id}-vol-global` },
+    h('input', {
+      type: 'checkbox',
+      id: `${id}-vol-global`,
+      checked: useGlobal,
+      onchange: (e) => {
+        ui.state.events[id].volume = e.target.checked ? null : ui.state.volume;
+        markChanged();
+        render();
+      },
+    }),
+    h('span', { text: useGlobal ? `Use global volume (${percent(ui.state.volume)})` : 'Use global volume' }));
+  const slider = useGlobal ? [] : rangeControl({
+    id: `${id}-vol`,
+    value: volume,
+    label: `${label} volume`,
+    onInput: (v) => { ui.state.events[id].volume = v; markChanged(); },
+  });
+  return h('div', { class: 'row' },
+    toggle,
+    slider);
+}
+
+function renderPerModel(eventMeta, label) {
+  const id = eventMeta.id;
+  const event = ui.state.events[id];
+  const families = ui.savedFamilies.filter((f) => Object.hasOwn(ui.state.modelPatterns, f));
+  const setCount = families.filter((f) => event.byModel?.[f]).length;
+  const rows = families.map((family, index) => {
+    const selectId = `${id}-fam-${index}`;
+    const labelId = `${selectId}-label`;
+    const select = soundSelect(selectId, event.byModel?.[family] ?? '', { inherit: true, labelledBy: labelId });
+    select.addEventListener('change', (e) => {
+      const byModel = (ui.state.events[id].byModel ??= {});
+      if (e.target.value) {
+        byModel[family] = e.target.value;
+      } else {
+        delete byModel[family];
+      }
+      markChanged();
+    });
+    return h('div', { class: 'row' },
+      h('label', { class: 'row-label', id: labelId, for: selectId, text: family }),
+      h('div', { class: 'grow' }, select),
+      playButton(`${id}:${family}`, `Preview ${label} sound for ${family}`, () => previewEvent(id, family)));
+  });
+  const details = h('details', {
+    class: 'per-model',
+    open: ui.openDetails.has(id),
+    ontoggle: (e) => {
+      if (e.target.open) {
+        ui.openDetails.add(id);
+      } else {
+        ui.openDetails.delete(id);
+      }
+    },
+  },
+  h('summary', { id: `${id}-models` }, `Per-model sounds${setCount ? ` (${setCount} set)` : ''}`),
+  h('div', { class: 'model-rows' },
+    rows.length ? rows : h('p', { class: 'hint', text: 'No model families defined.' })));
+  return details;
+}
+
+function renderEvent(eventMeta) {
+  const id = eventMeta.id;
+  const event = ui.state.events[id];
+  const label = capitalize(eventMeta.label);
+  const titleId = `${id}-title`;
+  const card = h('section', { class: `card event${event.enabled ? '' : ' is-off'}`, 'aria-labelledby': titleId });
+  const select = soundSelect(`${id}-sound`, event.sound);
+  select.addEventListener('change', (e) => {
+    ui.state.events[id].sound = e.target.value;
+    markChanged();
+  });
+  card.append(
+    h('div', { class: 'card-head' },
+      h('h3', { id: titleId, text: label }),
+      switchControl({
+        id: `${id}-enabled`,
+        label: `Enable ${label}`,
+        hideLabel: true,
+        checked: event.enabled,
+        onChange: (on) => {
+          ui.state.events[id].enabled = on;
+          card.classList.toggle('is-off', !on);
+          markChanged();
+        },
+      })),
+    h('div', { class: 'event-body' },
+      h('div', { class: 'row' },
+        h('label', { class: 'row-label', for: `${id}-sound`, text: 'Sound' }),
+        h('div', { class: 'grow' }, select),
+        playButton(id, `Preview ${label} sound`, () => previewEvent(id))),
+      renderEventVolume(eventMeta, label),
+      eventMeta.agent ? renderPerModel(eventMeta, label) : null));
+  return card;
+}
+
+function renderEvents() {
+  return h('div', {},
+    h('h2', { class: 'section-title', text: 'Events' }),
+    h('div', { class: 'events' }, ui.meta.events.map(renderEvent)));
+}
+
+/* ---------- Your sounds ---------- */
+
+function uploadProblem(file) {
+  if (!UPLOAD_EXT_RE.test(file.name)) {
+    return `${file.name}: only .wav and .mp3 files are supported.`;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return `${file.name}: the file is larger than 5 MiB.`;
+  }
+  return '';
+}
+
+async function uploadOne(file) {
+  const problem = uploadProblem(file);
+  if (problem) {
+    return { text: problem, kind: 'error' };
+  }
+  try {
+    await api(`/api/upload?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      body: file,
+      headers: { 'Content-Type': 'application/octet-stream' },
+    });
+    return { text: `Added ${file.name}.`, kind: 'ok' };
+  } catch (err) {
+    return { text: `${file.name}: ${UPLOAD_ERRORS[err.status] ?? err.message}`, kind: 'error' };
+  }
+}
+
+async function uploadFiles(files) {
+  const messages = [];
+  for (const file of files) {
+    ui.upload = { busy: file.name, text: `Uploading ${file.name}…`, kind: '' };
+    render();
+    messages.push(await uploadOne(file));
+  }
+  await refreshSounds();
+  const failed = messages.some((m) => m.kind === 'error');
+  ui.upload = { busy: '', text: messages.map((m) => m.text).join(' '), kind: failed ? 'error' : 'ok' };
+  render();
+}
+
+async function refreshSounds() {
+  try {
+    ui.sounds = (await api('/api/sounds')).sounds;
+  } catch (err) {
+    showToast(`Could not refresh sounds: ${err.message}`, 'error');
+  }
+}
+
+async function deleteSound(id) {
+  if (!(await flushSave())) {
+    return;
+  }
+  try {
+    const { config } = await api(`/api/sounds?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    setConfig(config);
+    ui.confirmDelete = null;
+    await refreshSounds();
+    render({ focus: 'file-input' });
+    showToast('Sound deleted', 'ok');
+  } catch (err) {
+    showToast(`Could not delete: ${err.message}`, 'error');
+  }
+}
+
+function renderDropZone() {
+  const input = h('input', {
+    type: 'file',
+    id: 'file-input',
+    class: 'vh',
+    accept: '.wav,.mp3',
+    multiple: true,
+    disabled: Boolean(ui.upload.busy),
+    onchange: (e) => {
+      const files = [...e.target.files];
+      e.target.value = '';
+      if (files.length) {
+        uploadFiles(files);
+      }
+    },
+  });
+  const zone = h('label', {
+    class: 'drop',
+    for: 'file-input',
+    'aria-busy': String(Boolean(ui.upload.busy)),
+  },
+  input,
+  h('span', {}, 'Drop a .wav or .mp3 here, or ', h('strong', { text: 'choose a file' })),
+  h('span', { class: 'hint', text: 'Up to 5 MiB each' }));
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('is-over');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('is-over'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('is-over');
+    const files = [...(e.dataTransfer?.files ?? [])];
+    if (files.length && !ui.upload.busy) {
+      uploadFiles(files);
+    }
+  });
+  return zone;
+}
+
+function renderSoundItem(sound, index) {
+  const confirming = ui.confirmDelete === sound.id;
+  const actions = confirming
+    ? [
+      h('span', { class: 'hint', text: 'Delete this sound?' }),
+      h('button', {
+        type: 'button',
+        id: `snd-${index}-confirm`,
+        class: 'btn btn-small btn-danger-solid',
+        text: 'Delete',
+        'aria-label': `Confirm deleting ${sound.label}`,
+        onclick: () => deleteSound(sound.id),
+      }),
+      h('button', {
+        type: 'button',
+        id: `snd-${index}-cancel`,
+        class: 'btn btn-small',
+        text: 'Cancel',
+        onclick: () => { ui.confirmDelete = null; render({ focus: `snd-${index}-delete` }); },
+      }),
+    ]
+    : [h('button', {
+      type: 'button',
+      id: `snd-${index}-delete`,
+      class: 'btn btn-small btn-danger',
+      text: 'Delete',
+      'aria-label': `Delete ${sound.label}`,
+      onclick: () => { ui.confirmDelete = sound.id; render({ focus: `snd-${index}-cancel` }); },
+    })];
+  return h('li', {},
+    playButton(`sound:${sound.id}`, `Preview ${sound.label}`, () => previewUserSound(sound.id)),
+    h('span', { class: 'name', text: sound.label }),
+    actions);
+}
+
+function renderSounds() {
+  const userSounds = ui.sounds.filter((s) => s.source === 'user');
+  return h('section', { class: 'card stack', 'aria-labelledby': 'sounds-title' },
+    h('h2', { id: 'sounds-title', text: 'Your sounds' }),
+    renderDropZone(),
+    h('p', {
+      class: 'upload-status',
+      role: 'status',
+      'data-kind': ui.upload.kind,
+      text: ui.upload.text,
+    }),
+    userSounds.length
+      ? h('ul', { class: 'list', 'aria-label': 'Uploaded sounds' }, userSounds.map(renderSoundItem))
+      : h('p', { class: 'hint', text: 'No sounds uploaded yet.' }));
+}
+
+/* ---------- Model families ---------- */
+
+function familyNameError(name) {
+  if (!FAMILY_NAME_RE.test(name)) {
+    return 'Use lowercase letters, digits, - or _ (up to 32 characters).';
+  }
+  if (RESERVED_FAMILIES.has(name) || Object.hasOwn(ui.state.modelPatterns, name)) {
+    return `“${name}” is already used.`;
+  }
+  return '';
+}
+
+function addFamily(event) {
+  event.preventDefault();
+  const name = ui.familyDraft.name.trim().toLowerCase();
+  const pattern = ui.familyDraft.pattern.trim();
+  const error = familyNameError(name) || (pattern ? '' : 'Enter the text that model ids contain.');
+  if (error) {
+    ui.familyDraft.error = error;
+    render({ focus: name && !familyNameError(name) ? 'family-pattern' : 'family-name' });
+    return;
+  }
+  ui.state.modelPatterns[name] = pattern;
+  ui.familyDraft = { name: '', pattern: '', error: '' };
+  markChanged();
+  render({ focus: 'family-name' });
+}
+
+function removeFamily(family) {
+  delete ui.state.modelPatterns[family];
+  for (const event of Object.values(ui.state.events)) {
+    if (event.byModel) {
+      delete event.byModel[family];
+    }
+  }
+  markChanged();
+  render({ focus: 'family-name' });
+}
+
+function renderFamilyRow(family, index) {
+  const builtIn = ui.builtInFamilies.has(family);
+  return h('li', {},
+    h('span', { class: 'family-name', id: `fam-${index}-label`, text: family }),
+    h('div', { class: 'grow' }, textInput({
+      id: `fam-${index}-pattern`,
+      value: ui.state.modelPatterns[family],
+      label: `Pattern for ${family}`,
+      isValid: isNonEmpty,
+      onValid: (text) => { ui.state.modelPatterns[family] = text; markChanged(); },
+    })),
+    builtIn
+      ? h('span', { class: 'tag', text: 'Built-in' })
+      : h('button', {
+        type: 'button',
+        class: 'btn btn-small btn-danger',
+        text: 'Remove',
+        'aria-label': `Remove ${family} family`,
+        onclick: () => removeFamily(family),
+      }));
+}
+
+function renderAddFamily() {
+  const draft = ui.familyDraft;
+  const field = (key, label, placeholder) => h('div', {},
+    h('label', { class: 'field-label', for: `family-${key}`, text: label }),
+    h('input', {
+      type: 'text',
+      id: `family-${key}`,
+      value: draft[key],
+      placeholder,
+      autocomplete: 'off',
+      'aria-describedby': draft.error ? 'family-error' : null,
+      oninput: (e) => { ui.familyDraft[key] = e.target.value; },
+    }));
+  return h('form', { class: 'stack', onsubmit: addFamily, 'aria-label': 'Add a model family' },
+    h('div', { class: 'add-family' },
+      field('name', 'New family', 'e.g. mymodel'),
+      field('pattern', 'Model id contains', 'e.g. my-model'),
+      h('button', { type: 'submit', class: 'btn', text: 'Add family' })),
+    draft.error ? h('p', { class: 'field-error', id: 'family-error', role: 'alert', text: draft.error }) : null);
+}
+
+function renderFamilies() {
+  const families = Object.keys(ui.state.modelPatterns);
+  return h('section', { class: 'card stack', 'aria-labelledby': 'families-title' },
+    h('div', {},
+      h('h2', { id: 'families-title', text: 'Model families' }),
+      h('p', { class: 'hint', text: 'A model id belongs to the first family whose text it contains (case-insensitive). New families appear under “Per-model sounds” once saved.' })),
+    h('ul', { class: 'list', 'aria-label': 'Model families' }, families.map(renderFamilyRow)),
+    renderAddFamily());
+}
+
+/* ---------- Footer and page ---------- */
+
+function renderFooter() {
+  return h('footer', { class: 'foot' },
+    h('p', { class: 'path' }, 'Config file: ', h('code', { text: ui.meta.configFile })),
+    h('div', { class: 'actions' },
+      h('button', {
+        type: 'button',
+        id: 'test-all',
+        class: 'btn',
+        disabled: Boolean(ui.testing),
+        text: ui.testing || 'Test all',
+        onclick: testAll,
+      }),
+      h('button', {
+        type: 'button',
+        id: 'done-button',
+        class: 'btn btn-primary',
+        text: 'Done',
+        onclick: (e) => finish(e.currentTarget),
+      })));
+}
+
+function render({ focus } = {}) {
+  const focusId = focus ?? document.activeElement?.id;
+  const scrollY = window.scrollY;
+  dom.shell.replaceChildren(
+    renderHeader(),
+    h('main', {},
+      renderGlobal(),
+      renderEvents(),
+      h('h2', { class: 'section-title', text: 'Library' }),
+      h('div', { class: 'stack' }, renderSounds(), renderFamilies())),
+    renderFooter());
+  window.scrollTo(0, scrollY);
+  if (focusId) {
+    document.getElementById(focusId)?.focus({ preventScroll: true });
+  }
+}
+
+function showFatal(message) {
+  dom.shell.replaceChildren(h('div', { class: 'center-message', role: 'alert' },
+    h('p', {}, h('strong', { text: 'Settings could not be loaded.' })),
+    h('p', { text: message })));
+}
+
+async function init() {
+  if (!token) {
+    showFatal('This page needs its access token. Run /claudio-notify:config again.');
+    return;
+  }
+  try {
+    const [{ config, meta }, { sounds }] = await Promise.all([api('/api/config'), api('/api/sounds')]);
+    ui.meta = meta;
+    ui.sounds = sounds;
+    ui.builtInFamilies = new Set(meta.defaults?.modelPatterns ? Object.keys(meta.defaults.modelPatterns) : meta.families);
+    setConfig(config);
+    render();
+  } catch (err) {
+    showFatal(err.message);
+  }
+  heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
+  addEventListener('pagehide', onPageHide);
+}
+
+init();
+</script>
+</body>
+</html>
