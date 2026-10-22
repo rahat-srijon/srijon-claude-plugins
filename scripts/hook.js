@@ -72,20 +72,26 @@ const SOUND_HOOKS = Object.freeze({
   Notification: (input) => (input.notification_type === 'permission_prompt' ? 'permission' : null),
 });
 
-/** @type {ModelSource} */
-const sessionModel = (_input, session) => session.getModel();
+/**
+ * The main agent's model: the cached one, else the latest in the transcript,
+ * since SessionStart does not always report a model.
+ * @type {ModelSource}
+ */
+const sessionModel = (input, session) => (
+  session.getModel() ?? modelFromTranscript(nonEmptyString(input.transcript_path))
+);
 
 /** @type {Readonly<Record<EventName, ModelSource>>} */
 const MODEL_SOURCES = Object.freeze({
   agent_done: (input, session) => modelFromTranscript(nonEmptyString(input.transcript_path)) ?? session.getModel(),
   subagent_done: (input, session) => (
-    modelFromTranscript(nonEmptyString(input.agent_transcript_path)) ?? session.getModel()
+    modelFromTranscript(nonEmptyString(input.agent_transcript_path)) ?? sessionModel(input, session, undefined)
   ),
   subagent_start: (input, session, projectDir) => {
     const toolInput = asRecord(input.tool_input);
     return nonEmptyString(toolInput.model)
       ?? modelFromAgentDefinition(nonEmptyString(toolInput.subagent_type), { projectDir })
-      ?? session.getModel();
+      ?? sessionModel(input, session, projectDir);
   },
   question: sessionModel,
   permission: sessionModel,
