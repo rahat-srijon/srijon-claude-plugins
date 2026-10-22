@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":"hello"}}
+{"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","role":"assistant","content":"first"}}
+{"type":"system","subtype":"note"}
+{"type":"assistant","message":{"model":"claude-opus-5-5","role":"assistant","content":"second"}}
+{"type":"user","message":{"role":"user","content":"thanks"}}
