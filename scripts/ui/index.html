@@ -749,7 +749,7 @@ function onPageHide() {
       body: JSON.stringify(ui.state),
     }).catch(() => {});
   }
-  navigator.sendBeacon(`/api/close?token=${encodeURIComponent(token)}`);
+  navigator.sendBeacon(`/api/close?grace=1&token=${encodeURIComponent(token)}`);
 }
 
 /* ---------- Toast ---------- */

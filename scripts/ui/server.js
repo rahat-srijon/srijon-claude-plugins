@@ -53,6 +53,7 @@ const TOKEN_HEADER = 'x-claudio-token';
 const MAX_JSON_BYTES = 256 * 1024;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const PING_TIMEOUT_MS = 2000;
+const CLOSE_GRACE_MS = 5000;
 const AUDIO_EXT_RE = /\.(?:wav|mp3)$/i;
 const CONTROL_CHARS_RE = /[\x00-\x1f\x7f]/;
 // Windows maps these names to devices whatever the extension.
@@ -92,6 +93,8 @@ export async function startServer(options = {}) {
   let previewQueue = Promise.resolve();
   /** @type {NodeJS.Timeout | undefined} */
   let idleTimer;
+  /** @type {NodeJS.Timeout | undefined} */
+  let graceTimer;
   /** @type {Promise<void> | undefined} */
   let closing;
   let allowedHosts = new Set();
@@ -198,9 +201,17 @@ export async function startServer(options = {}) {
         sendJson(ctx.res, 200, await upload(ctx.req, ctx.url));
         return;
       case 'POST /api/close':
-        ctx.res.on('finish', () => {
-          close().catch((err) => log('error', 'ui: close failed', err));
-        });
+        if (ctx.url.searchParams.get('grace') === '1') {
+          // Sent when the tab is hidden: a reload's first API request cancels it.
+          graceTimer = setTimeout(() => {
+            close().catch((err) => log('error', 'ui: close failed', err));
+          }, CLOSE_GRACE_MS);
+          graceTimer.unref();
+        } else {
+          ctx.res.on('finish', () => {
+            close().catch((err) => log('error', 'ui: close failed', err));
+          });
+        }
         sendJson(ctx.res, 200, { ok: true });
         return;
       default:
@@ -417,6 +428,7 @@ export async function startServer(options = {}) {
   /** @returns {void} */
   function resetIdleTimer() {
     clearTimeout(idleTimer);
+    clearTimeout(graceTimer);
     if (closing) {
       return;
     }
@@ -431,6 +443,7 @@ export async function startServer(options = {}) {
   function close() {
     closing ??= (async () => {
       clearTimeout(idleTimer);
+      clearTimeout(graceTimer);
       await new Promise((resolve) => {
         server.close(() => resolve(undefined));
         // Node 18.0 and 18.1 lack this; idle keep-alive sockets then close on their own.
