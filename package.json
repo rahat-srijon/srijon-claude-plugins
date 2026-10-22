@@ -6,6 +6,14 @@
   "type": "module",
   "license": "MIT",
   "author": "Md. Rahat Islam",
+  "homepage": "https://github.com/rahat-srijon/claudio-notify",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahat-srijon/claudio-notify.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rahat-srijon/claudio-notify/issues"
+  },
   "engines": {
     "node": ">=18"
   },

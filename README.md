@@ -7,16 +7,14 @@ Step away from the terminal and still hear when Claude finishes, asks you someth
 ## Install
 
 ```
-/plugin marketplace add <owner>/claudio-notify
+/plugin marketplace add rahat-srijon/claudio-notify
 /plugin install claudio-notify@claudio-notify
 ```
-
-`<owner>` is the GitHub owner of the repository.
 
 Or in one step (needs Claude Code 2.1.275 or later):
 
 ```
-/plugin install claudio-notify --marketplace <owner>/claudio-notify
+/plugin install claudio-notify --marketplace rahat-srijon/claudio-notify
 ```
 
 ### Requirements
@@ -161,7 +159,7 @@ Everything runs on your machine. claudio-notify makes no network requests, apart
 ## Development
 
 ```
-git clone https://github.com/<owner>/claudio-notify
+git clone https://github.com/rahat-srijon/claudio-notify
 cd claudio-notify
 claude --plugin-dir .
 ```
