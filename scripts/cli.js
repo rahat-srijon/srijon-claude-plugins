@@ -1,7 +1,8 @@
 // @ts-check
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   EVENTS,
   EVENT_LABELS,
@@ -18,9 +19,12 @@ import { isQuietTime } from './lib/state.js';
 const PREFIX = 'claudio-notify';
 const TEST_GAP_MS = 300;
 const DEFAULT_MODEL_FAMILY = 'other';
+const SERVER_START_TIMEOUT_MS = 10000;
 
 /** Flags that take a value; any other flag is rejected. */
 const VALUE_FLAGS = Object.freeze(['data-dir', 'model']);
+/** Flags that take no value and are stored as 'true'. */
+const BOOLEAN_FLAGS = Object.freeze(['no-open']);
 
 /**
  * @typedef {object} Invocation
@@ -54,6 +58,10 @@ function parseArgs(argv) {
       continue;
     }
     const name = arg.slice(2);
+    if (BOOLEAN_FLAGS.includes(name)) {
+      flags[name] = 'true';
+      continue;
+    }
     if (!VALUE_FLAGS.includes(name)) {
       throw new Error(`unknown option ${arg}`);
     }
@@ -156,6 +164,121 @@ async function test({ args, flags }) {
 }
 
 /**
+ * Parse the server's first stdout line.
+ * @param {string} line
+ * @returns {string | null} The page URL, or null if the line is not valid.
+ */
+function parseServerUrl(line) {
+  try {
+    const info = JSON.parse(line);
+    return typeof info?.url === 'string' ? info.url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Start the settings server, or reuse the one already running for this data
+ * dir, and resolve with its page URL once it has printed it.
+ * @param {string} serverPath
+ * @returns {Promise<string>}
+ */
+function startSettingsServer(serverPath) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [serverPath, '--data-dir', dataDir()], {
+      detached: true,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let output = '';
+    let settled = false;
+    /**
+     * @param {Error | null} err
+     * @param {string} [url]
+     * @returns {void}
+     */
+    const settle = (err, url = '') => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      child.stdout.destroy();
+      if (err) {
+        child.kill();
+        reject(err);
+        return;
+      }
+      child.unref();
+      resolve(url);
+    };
+    const timer = setTimeout(
+      () => settle(new Error('timed out waiting for the settings server')),
+      SERVER_START_TIMEOUT_MS,
+    );
+    child.on('error', (err) => settle(err));
+    child.on('exit', () => settle(new Error('settings server exited before printing its URL')));
+    child.stdout.on('data', (/** @type {Buffer} */ chunk) => {
+      output += chunk.toString('utf8');
+      const newline = output.indexOf('\n');
+      if (newline === -1) {
+        return;
+      }
+      const url = parseServerUrl(output.slice(0, newline));
+      settle(url === null ? new Error('settings server printed invalid output') : null, url ?? '');
+    });
+  });
+}
+
+/**
+ * Open a URL in the default browser without waiting for it. Spawn errors are
+ * ignored because the URL is printed as well.
+ * @param {string} url
+ * @returns {void}
+ */
+function openBrowser(url) {
+  /** @type {string} */
+  let command;
+  /** @type {string[]} */
+  let args;
+  if (process.platform === 'win32') {
+    command = 'rundll32';
+    args = ['url.dll,FileProtocolHandler', url];
+  } else if (process.platform === 'darwin') {
+    command = 'open';
+    args = [url];
+  } else {
+    command = 'xdg-open';
+    args = [url];
+  }
+  const opener = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
+  opener.on('error', () => {});
+  opener.unref();
+}
+
+/**
+ * Start or reuse the settings server, then open its page unless --no-open is set.
+ * @param {Invocation} invocation
+ * @returns {Promise<number>}
+ */
+async function openSettings({ flags }) {
+  /** @type {string} */
+  let url;
+  try {
+    url = await startSettingsServer(fileURLToPath(new URL('./ui/server.js', import.meta.url)));
+  } catch (err) {
+    console.error(`${PREFIX}: cannot open settings: ${err instanceof Error ? err.message : String(err)}`);
+    return 1;
+  }
+  if (flags['no-open'] !== 'true') {
+    openBrowser(url);
+  }
+  console.log(`${PREFIX}: settings page at ${url}`);
+  console.log('The page closes its server when you click Done, or after 10 minutes idle.');
+  return 0;
+}
+
+/**
  * Subcommands by name, used for both dispatch and the help text, so a new
  * command only needs an entry here.
  * @type {Readonly<Record<string, Command>>}
@@ -168,6 +291,11 @@ const COMMANDS = Object.freeze({
     summary: 'Play the sound of one event, or of every enabled event',
     usage: '[event|all] [--model <family>]',
     run: test,
+  },
+  config: {
+    summary: 'Open the settings page in your browser',
+    usage: '[--no-open]',
+    run: openSettings,
   },
   help: { summary: 'Show this help', run: () => printHelp() },
 });
