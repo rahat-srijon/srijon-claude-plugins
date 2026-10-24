@@ -38,6 +38,16 @@ const TIMBRES = {
 /** @type {Sound[]} */
 const SOUNDS = [
   {
+    file: 'start.wav',
+    length: 0.25,
+    timbre: 'soft',
+    peakDb: -9,
+    notes: [
+      { freq: 523.25, start: 0, dur: 0.12 },
+      { freq: 783.99, start: 0.09, dur: 0.16 },
+    ],
+  },
+  {
     file: 'done.wav',
     length: 0.6,
     timbre: 'bell',
