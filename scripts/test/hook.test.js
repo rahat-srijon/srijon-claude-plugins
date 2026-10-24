@@ -7,6 +7,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { eventFor, handle } from '../hook.js';
+import { openSession } from '../lib/state.js';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HOOK_SCRIPT = path.join(PLUGIN_ROOT, 'scripts', 'hook.js');
@@ -61,11 +62,22 @@ function restoreEnv(name, value) {
 function fakes({ failPlay = () => false, failSpeak = false } = {}) {
   /** @type {Call[]} */
   const calls = [];
+  /** @type {string[][]} */
+  const spawned = [];
   return {
     calls,
+    spawned,
     deps: {
       dataDir,
       pluginRoot: PLUGIN_ROOT,
+      /**
+       * Records repeaters instead of starting them.
+       * @param {string} script
+       * @param {string[]} args
+       */
+      spawnDetached: (script, args) => {
+        spawned.push([script, ...args]);
+      },
       /**
        * @param {string} file
        * @param {{ volume: number }} opts
@@ -165,12 +177,14 @@ describe('ignored input', () => {
 });
 
 describe('state hooks', () => {
-  test('UserPromptSubmit records the turn start', async () => {
+  test('UserPromptSubmit records the turn start and skips the disabled agent_start sound', async () => {
     const { calls, deps } = fakes();
     const outcome = await handle({ hook_event_name: 'UserPromptSubmit', session_id: 's1' }, deps);
-    assert.equal(outcome.status, 'recorded');
-    assert.equal(outcome.detail, 'turn start');
+    assert.equal(outcome.event, 'agent_start');
+    assert.equal(outcome.status, 'skipped');
+    assert.equal(outcome.detail, 'event disabled');
     assert.deepEqual(calls, []);
+    assert.equal(openSession(dataDir, 's1').turnActive(), true);
   });
 
   test('SessionStart records the model', async () => {

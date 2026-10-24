@@ -57,6 +57,13 @@
           { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.js\"", "async": true }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.js\"", "async": true }
+        ]
+      }
     ]
   }
 }

@@ -1,17 +1,19 @@
 // @ts-check
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { DEFAULTS, effectiveVolume, loadConfig, resolveSound } from './lib/config.js';
+import { isAttentionEvent, loadConfig } from './lib/config.js';
 import { log } from './lib/log.js';
 import { familyOf, modelFromAgentDefinition, modelFromTranscript } from './lib/model.js';
 import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './lib/paths.js';
+import { canSound, playEvent, spawnDetached as defaultSpawnDetached } from './lib/play.js';
 import { play as defaultPlay, speak as defaultSpeak } from './lib/player/index.js';
-import { isQuietTime, openSession, tryAcquire } from './lib/state.js';
+import { clearAttention, joinUsageReminder, leaveUsageReminders, setAttention } from './lib/reminders.js';
+import { openSession } from './lib/state.js';
 import { refreshShim } from './lib/statusline.js';
+import { WINDOWS, WINDOW_NAMES, hitWindows, readUsageState } from './lib/usage.js';
 
 /** @typedef {import('./lib/config.js').Config} Config */
 /** @typedef {import('./lib/config.js').EventName} EventName */
-/** @typedef {import('./lib/config.js').ResolvedSound} ResolvedSound */
 /** @typedef {import('./lib/state.js').Session} Session */
 
 /**
@@ -26,6 +28,7 @@ import { refreshShim } from './lib/statusline.js';
  * @property {typeof defaultSpeak} [speak]
  * @property {string} [dataDir]
  * @property {string} [pluginRoot]
+ * @property {typeof defaultSpawnDetached} [spawnDetached] Starts reminder repeaters.
  */
 
 /**
@@ -42,7 +45,7 @@ import { refreshShim } from './lib/statusline.js';
 const STDIN_TIMEOUT_MS = 3000;
 
 /**
- * Hooks that only update session state.
+ * Hooks that update session state, before any sound they may also play.
  * @type {Readonly<Record<string, (session: Session, input: HookInput) => string>>}
  */
 const STATE_HOOKS = Object.freeze({
@@ -50,9 +53,15 @@ const STATE_HOOKS = Object.freeze({
     session.markTurnStart();
     return 'turn start';
   },
+  Stop: (session) => endTurn(session),
+  StopFailure: (session) => endTurn(session),
+  SessionEnd: (session) => endTurn(session),
   SessionStart: (session, input) => recordModel(session, input.model),
   PostModelSwitch: (session, input) => recordModel(session, input.to_model),
 });
+
+/** Hooks that end a turn, so usage reminders stop repeating for the session. */
+const TURN_END_HOOKS = Object.freeze(['Stop', 'StopFailure', 'SessionEnd']);
 
 /** @type {Readonly<Record<string, EventName>>} */
 const TOOL_EVENTS = Object.freeze({
@@ -66,6 +75,7 @@ const TOOL_EVENTS = Object.freeze({
  * @type {Readonly<Record<string, (input: HookInput) => EventName | null>>}
  */
 const SOUND_HOOKS = Object.freeze({
+  UserPromptSubmit: () => 'agent_start',
   Stop: () => 'agent_done',
   SubagentStop: () => 'subagent_done',
   StopFailure: () => 'error',
@@ -84,6 +94,7 @@ const sessionModel = (input, session) => (
 
 /** @type {Readonly<Record<EventName, ModelSource>>} */
 const MODEL_SOURCES = Object.freeze({
+  agent_start: sessionModel,
   agent_done: (input, session) => modelFromTranscript(nonEmptyString(input.transcript_path)) ?? session.getModel(),
   subagent_done: (input, session) => (
     modelFromTranscript(nonEmptyString(input.agent_transcript_path)) ?? sessionModel(input, session, undefined)
@@ -126,8 +137,9 @@ export function modelFor(input, session, projectDir) {
 }
 
 /**
- * Handle one hook invocation: update session state, or gate and play the
- * event's sound. Playback failures are logged, not thrown.
+ * Handle one hook invocation: stop a pending reminder, update session state,
+ * then gate and play the event's sound and start any reminders it needs.
+ * Playback failures are logged, not thrown.
  * @param {HookInput} input
  * @param {Deps} [deps]
  * @returns {Promise<Outcome>}
@@ -138,22 +150,31 @@ export async function handle(input, deps = {}) {
     speak = defaultSpeak,
     dataDir = defaultDataDir(),
     pluginRoot = defaultPluginRoot(),
+    spawnDetached = defaultSpawnDetached,
   } = deps;
   const hook = String(input.hook_event_name);
   const sessionId = nonEmptyString(input.session_id) ?? '';
+  const roots = { dataDir, pluginRoot };
 
+  // Any later hook in the session means the question, permission or error was dealt with.
+  if (sessionId && clearAttention(dataDir, sessionId)) {
+    log('debug', `hook: ${hook} stopped the reminder for session ${sessionId}`);
+  }
+  if (hook === 'SessionStart') {
+    // Plugin updates move CLAUDE_PLUGIN_ROOT, which the status line shim imports from.
+    refreshShim(roots);
+  }
   const record = lookup(STATE_HOOKS, input.hook_event_name);
-  if (record) {
-    if (hook === 'SessionStart') {
-      // Plugin updates move CLAUDE_PLUGIN_ROOT, which the status line shim imports from.
-      refreshShim({ dataDir, pluginRoot });
-    }
-    const detail = record(openSession(dataDir, sessionId), input);
-    return finish(hook, { status: 'recorded', event: null, model: null, family: null, detail });
+  const recorded = record ? record(openSession(dataDir, sessionId), input) : null;
+  if (sessionId && TURN_END_HOOKS.includes(hook)) {
+    leaveUsageReminders(dataDir, WINDOW_NAMES, sessionId);
   }
 
   const event = eventFor(input);
   if (!event) {
+    if (recorded !== null) {
+      return finish(hook, { status: 'recorded', event: null, model: null, family: null, detail: recorded });
+    }
     const subject = nonEmptyString(input.tool_name) ?? nonEmptyString(input.notification_type);
     const detail = subject ? `nothing to play for ${subject}` : 'nothing to play';
     return finish(hook, { status: 'ignored', event: null, model: null, family: null, detail });
@@ -166,85 +187,51 @@ export async function handle(input, deps = {}) {
   const family = familyOf(model, config.modelPatterns);
 
   const result = await playEvent(config, event, { family, session, play, speak, dataDir, pluginRoot });
+  if (event === 'agent_start') {
+    await remindUsageOnPrompt(config, input, sessionId, { play, speak, spawnDetached, ...roots });
+  }
+  const repeatMs = config.events[event].repeatMs ?? 0;
+  if (sessionId && isAttentionEvent(event) && repeatMs > 0 && canSound(config, event)) {
+    const transcriptPath = nonEmptyString(input.transcript_path);
+    const reminder = setAttention(dataDir, sessionId, { event, family, transcriptPath, projectDir: projectDir ?? null });
+    spawnDetached('remind.js', ['attention', sessionId, reminder.id], roots);
+  }
   return finish(hook, { ...result, event, model, family });
 }
 
 /**
- * Gate one event's sound (master switch, mute, quiet hours, event switch,
- * minimum turn length, cooldown) and play it, falling back to the bundled
- * sound. Playback failures are logged, not thrown.
+ * On a prompt, for each usage window past a threshold: play its "near" sound
+ * again if `remindOnPrompt` is on, and join the repeater that plays it while
+ * the turn runs if `repeatWhileWorkingMs` is set.
  * @param {Config} config
- * @param {EventName} event
- * @param {Deps & { family?: string, session?: Session | null }} [options]
- * @returns {Promise<{ status: 'skipped' | 'played' | 'failed', detail: string }>}
+ * @param {HookInput} input
+ * @param {string} sessionId
+ * @param {Required<Deps>} deps
+ * @returns {Promise<void>}
  */
-export async function playEvent(config, event, options = {}) {
-  const {
-    family = 'other',
-    session = null,
-    play = defaultPlay,
-    speak = defaultSpeak,
-    dataDir = defaultDataDir(),
-    pluginRoot = defaultPluginRoot(),
-  } = options;
-  const reason = skipReason(config, event, session, dataDir);
-  if (reason) {
-    return { status: 'skipped', detail: reason };
-  }
-
-  const volume = effectiveVolume(config, event);
-  const roots = { pluginRoot, dataDir };
-  const sound = resolveSound(config, event, family, roots);
-  // DEFAULTS has no overrides, so this resolves to the event's bundled sound.
-  const bundled = resolveSound(DEFAULTS, event, family, roots);
-  const attempts = sound.kind === bundled.kind && sound.value === bundled.value ? [sound] : [sound, bundled];
-  for (const attempt of attempts) {
-    try {
-      if (attempt.kind === 'tts') {
-        await speak(attempt.value, { volume });
-      } else {
-        await play(attempt.value, { volume });
-      }
-      const detail = attempt === sound ? describe(attempt) : `${describe(attempt)} (fallback)`;
-      return { status: 'played', detail };
-    } catch (err) {
-      log('warn', `hook: cannot play ${describe(attempt)}`, err);
+async function remindUsageOnPrompt(config, input, sessionId, deps) {
+  const { dataDir, pluginRoot, spawnDetached } = deps;
+  for (const window of hitWindows(readUsageState(dataDir), Date.now() / 1000)) {
+    const near = WINDOWS[window].near;
+    const { repeatWhileWorkingMs = 0, remindOnPrompt = false } = config.events[near];
+    if (sessionId && repeatWhileWorkingMs > 0 && canSound(config, near)
+      && joinUsageReminder(dataDir, window, sessionId, nonEmptyString(input.transcript_path))) {
+      spawnDetached('remind.js', ['usage', window], { dataDir, pluginRoot });
+    }
+    if (remindOnPrompt) {
+      const { status, detail } = await playEvent(config, near, deps);
+      log('debug', `hook: UserPromptSubmit event=${near} reminder ${status}: ${detail}`);
     }
   }
-  return { status: 'failed', detail: attempts.map(describe).join(', then ') };
 }
 
 /**
- * @param {Config} config
- * @param {EventName} event
- * @param {Session | null} session Null for events outside a session.
- * @param {string} dataDir
- * @returns {string | null} Why the sound should not play, or null to play it.
+ * @param {Session} session
+ * @returns {string}
  */
-function skipReason(config, event, session, dataDir) {
-  if (!config.enabled) {
-    return 'plugin disabled';
-  }
-  if (config.muted) {
-    return 'muted';
-  }
-  if (isQuietTime(config.quietHours)) {
-    return 'quiet hours';
-  }
-  if (!config.events[event].enabled) {
-    return 'event disabled';
-  }
-  if (event === 'agent_done' && session) {
-    const seconds = session.turnSeconds();
-    if (seconds !== null && seconds < config.minTurnSeconds) {
-      return `turn took ${seconds.toFixed(1)}s, under minTurnSeconds ${config.minTurnSeconds}`;
-    }
-  }
-  // Last, so an event skipped for another reason does not start a cooldown.
-  if (!tryAcquire(dataDir, event, config.cooldownMs)) {
-    return 'cooldown';
-  }
-  return null;
+function endTurn(session) {
+  session.markTurnEnd();
+  return 'turn end';
 }
 
 /**
@@ -272,14 +259,6 @@ function finish(hook, outcome) {
   const context = event ? ` event=${event} model=${model ?? 'unknown'} family=${family}` : '';
   log('debug', `hook: ${hook}${context} ${status}: ${detail}`);
   return outcome;
-}
-
-/**
- * @param {ResolvedSound} sound
- * @returns {string}
- */
-function describe(sound) {
-  return sound.kind === 'tts' ? `tts "${sound.value}"` : sound.value;
 }
 
 /**

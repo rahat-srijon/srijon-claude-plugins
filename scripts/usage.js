@@ -2,7 +2,6 @@
 // Usage-limit sounds. The status line shim imports onStatusLine(); the same
 // file runs detached as `usage.js play <event>...` to play sounds without
 // slowing the status line, and as `usage.js timer` for the opt-in reset timer.
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -10,9 +9,18 @@ import { pathToFileURL } from 'node:url';
 import { EVENTS, loadConfig } from './lib/config.js';
 import { log } from './lib/log.js';
 import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './lib/paths.js';
+import { canSound, playEvent, spawnDetached } from './lib/play.js';
+import { isAlive, joinUsageReminder } from './lib/reminders.js';
+import { openSession } from './lib/state.js';
 import { setupRecordFile, usageDir } from './lib/statusline.js';
-import { nextReset, observe, parseRateLimits, readUsageState } from './lib/usage.js';
-import { playEvent } from './hook.js';
+import {
+  WINDOWS,
+  hitWindows,
+  nextReset,
+  observe,
+  parseRateLimits,
+  readUsageState,
+} from './lib/usage.js';
 
 /** @typedef {import('./lib/config.js').Config} Config */
 /** @typedef {import('./lib/config.js').EventName} EventName */
@@ -30,9 +38,10 @@ const TIMER_MAX_SLEEP_MS = 10 * 60 * 1000;
 const TIMER_LATE_MS = 2000;
 
 /**
- * Handle one status line update: record the rate-limit windows and start a
- * detached player for any sound that is due. Never throws and never writes to
- * stdout, which belongs to the status line.
+ * Handle one status line update: record the rate-limit windows, start a
+ * detached player for any sound that is due, and join the "while working"
+ * repeater when a threshold is hit during a turn. Never throws and never
+ * writes to stdout, which belongs to the status line.
  * @param {string} text Status line JSON.
  * @param {Partial<Roots> & { spawnDetached?: typeof spawnDetached }} [options]
  * @returns {Promise<EventName[]>} The events handed to the player.
@@ -56,38 +65,32 @@ export async function onStatusLine(text, options = {}) {
     if (!result) {
       return [];
     }
-    const audible = result.events.filter((event) => config.enabled && !config.muted && config.events[event].enabled);
+    const roots = { dataDir, pluginRoot };
+    const audible = result.events.filter((event) => canSound(config, event));
     if (result.events.length > 0) {
       log('info', `usage: due ${result.events.join(', ')}; playing ${audible.join(', ') || 'none'}`);
     }
     if (audible.length > 0) {
-      start(['play', ...audible, ...(projectDir ? ['--project-dir', projectDir] : [])], { dataDir, pluginRoot });
+      start('usage.js', ['play', ...audible, ...(projectDir ? ['--project-dir', projectDir] : [])], roots);
     }
     if (config.usageResetTimer && nextReset(result.state, config) !== null && !timerRunning(dataDir)) {
-      start(['timer'], { dataDir, pluginRoot });
+      start('usage.js', ['timer'], roots);
+    }
+    const sessionId = stringField(input, 'session_id');
+    if (sessionId && openSession(dataDir, sessionId).turnActive()) {
+      for (const window of hitWindows(result.state, Date.now() / 1000)) {
+        const near = WINDOWS[window].near;
+        if ((config.events[near].repeatWhileWorkingMs ?? 0) > 0 && canSound(config, near)
+          && joinUsageReminder(dataDir, window, sessionId, stringField(input, 'transcript_path'))) {
+          start('remind.js', ['usage', window], roots);
+        }
+      }
     }
     return audible;
   } catch (err) {
     log('error', 'usage: status line update failed', err);
     return [];
   }
-}
-
-/**
- * Run this file in a detached, hidden process that outlives the status line.
- * @param {string[]} args
- * @param {Roots} roots
- * @returns {void}
- */
-export function spawnDetached(args, { dataDir, pluginRoot }) {
-  const child = spawn(process.execPath, [path.join(pluginRoot, 'scripts', 'usage.js'), ...args], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    env: { ...process.env, CLAUDIO_DATA_DIR: dataDir, CLAUDE_PLUGIN_ROOT: pluginRoot },
-  });
-  child.on('error', (err) => log('warn', `usage: cannot start ${args[0]}`, err));
-  child.unref();
 }
 
 /**
@@ -113,19 +116,6 @@ async function playEvents(events, { dataDir, pluginRoot, projectDir }) {
  */
 function pidFile(dataDir) {
   return path.join(usageDir(dataDir), 'timer.pid');
-}
-
-/**
- * @param {number} pid
- * @returns {boolean}
- */
-function isAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return /** @type {NodeJS.ErrnoException} */ (err).code === 'EPERM';
-  }
 }
 
 /**
@@ -218,6 +208,16 @@ async function runTimer({ dataDir, pluginRoot }) {
     releasePidFile(dataDir);
     log('info', 'usage: reset timer stopped');
   }
+}
+
+/**
+ * @param {unknown} input
+ * @param {string} key
+ * @returns {string | null}
+ */
+function stringField(input, key) {
+  const value = /** @type {Record<string, unknown>} */ (input ?? {})[key];
+  return typeof value === 'string' && value ? value : null;
 }
 
 /**
