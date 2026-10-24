@@ -1,24 +1,22 @@
 {
-  "name": "claudio-notify",
-  "version": "0.2.0",
+  "name": "srijon-claude-plugins",
   "private": true,
-  "description": "Audio notifications for Claude Code: distinct, customizable sounds when tasks finish, subagents start or stop, Claude asks a question, needs permission, or you near a usage limit — per model.",
-  "type": "module",
+  "description": "Claude Code plugin marketplace by Md. Rahat Islam.",
   "license": "MIT",
   "author": "Md. Rahat Islam",
-  "homepage": "https://github.com/rahat-srijon/claudio-notify",
+  "homepage": "https://github.com/rahat-srijon/srijon-claude-plugins",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rahat-srijon/claudio-notify.git"
-  },
-  "bugs": {
-    "url": "https://github.com/rahat-srijon/claudio-notify/issues"
+    "url": "git+https://github.com/rahat-srijon/srijon-claude-plugins.git"
   },
   "engines": {
     "node": ">=18"
   },
+  "workspaces": [
+    "plugins/*"
+  ],
   "scripts": {
-    "test": "node --test",
-    "gen-sounds": "node scripts/gen-sounds.js"
+    "test": "npm test --workspaces --if-present",
+    "validate": "claude plugin validate ."
   }
 }

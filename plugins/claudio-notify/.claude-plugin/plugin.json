@@ -5,8 +5,8 @@
   "author": {
     "name": "Md. Rahat Islam"
   },
-  "homepage": "https://github.com/rahat-srijon/claudio-notify",
-  "repository": "https://github.com/rahat-srijon/claudio-notify",
+  "homepage": "https://github.com/rahat-srijon/srijon-claude-plugins/tree/master/plugins/claudio-notify",
+  "repository": "https://github.com/rahat-srijon/srijon-claude-plugins",
   "license": "MIT",
   "keywords": [
     "notifications",
