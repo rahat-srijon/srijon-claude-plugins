@@ -7,6 +7,7 @@ import { familyOf, modelFromAgentDefinition, modelFromTranscript } from './lib/m
 import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './lib/paths.js';
 import { play as defaultPlay, speak as defaultSpeak } from './lib/player/index.js';
 import { isQuietTime, openSession, tryAcquire } from './lib/state.js';
+import { refreshShim } from './lib/statusline.js';
 
 /** @typedef {import('./lib/config.js').Config} Config */
 /** @typedef {import('./lib/config.js').EventName} EventName */
@@ -96,6 +97,11 @@ const MODEL_SOURCES = Object.freeze({
   question: sessionModel,
   permission: sessionModel,
   error: sessionModel,
+  // Usage-limit events come from the status line, not a hook, and belong to no model.
+  usage_5h_near: () => null,
+  usage_5h_reset: () => null,
+  usage_week_near: () => null,
+  usage_week_reset: () => null,
 });
 
 /**
@@ -138,6 +144,10 @@ export async function handle(input, deps = {}) {
 
   const record = lookup(STATE_HOOKS, input.hook_event_name);
   if (record) {
+    if (hook === 'SessionStart') {
+      // Plugin updates move CLAUDE_PLUGIN_ROOT, which the status line shim imports from.
+      refreshShim({ dataDir, pluginRoot });
+    }
     const detail = record(openSession(dataDir, sessionId), input);
     return finish(hook, { status: 'recorded', event: null, model: null, family: null, detail });
   }
@@ -155,9 +165,31 @@ export async function handle(input, deps = {}) {
   const model = modelFor(input, session, projectDir);
   const family = familyOf(model, config.modelPatterns);
 
+  const result = await playEvent(config, event, { family, session, play, speak, dataDir, pluginRoot });
+  return finish(hook, { ...result, event, model, family });
+}
+
+/**
+ * Gate one event's sound (master switch, mute, quiet hours, event switch,
+ * minimum turn length, cooldown) and play it, falling back to the bundled
+ * sound. Playback failures are logged, not thrown.
+ * @param {Config} config
+ * @param {EventName} event
+ * @param {Deps & { family?: string, session?: Session | null }} [options]
+ * @returns {Promise<{ status: 'skipped' | 'played' | 'failed', detail: string }>}
+ */
+export async function playEvent(config, event, options = {}) {
+  const {
+    family = 'other',
+    session = null,
+    play = defaultPlay,
+    speak = defaultSpeak,
+    dataDir = defaultDataDir(),
+    pluginRoot = defaultPluginRoot(),
+  } = options;
   const reason = skipReason(config, event, session, dataDir);
   if (reason) {
-    return finish(hook, { status: 'skipped', event, model, family, detail: reason });
+    return { status: 'skipped', detail: reason };
   }
 
   const volume = effectiveVolume(config, event);
@@ -174,18 +206,18 @@ export async function handle(input, deps = {}) {
         await play(attempt.value, { volume });
       }
       const detail = attempt === sound ? describe(attempt) : `${describe(attempt)} (fallback)`;
-      return finish(hook, { status: 'played', event, model, family, detail });
+      return { status: 'played', detail };
     } catch (err) {
       log('warn', `hook: cannot play ${describe(attempt)}`, err);
     }
   }
-  return finish(hook, { status: 'failed', event, model, family, detail: attempts.map(describe).join(', then ') });
+  return { status: 'failed', detail: attempts.map(describe).join(', then ') };
 }
 
 /**
  * @param {Config} config
  * @param {EventName} event
- * @param {Session} session
+ * @param {Session | null} session Null for events outside a session.
  * @param {string} dataDir
  * @returns {string | null} Why the sound should not play, or null to play it.
  */
@@ -202,7 +234,7 @@ function skipReason(config, event, session, dataDir) {
   if (!config.events[event].enabled) {
     return 'event disabled';
   }
-  if (event === 'agent_done') {
+  if (event === 'agent_done' && session) {
     const seconds = session.turnSeconds();
     if (seconds !== null && seconds < config.minTurnSeconds) {
       return `turn took ${seconds.toFixed(1)}s, under minTurnSeconds ${config.minTurnSeconds}`;

@@ -48,7 +48,7 @@ function sanitize(value, fallback) {
  * @param {unknown} data
  * @returns {void}
  */
-function writeJsonAtomic(file, data) {
+export function writeJsonAtomic(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
@@ -65,7 +65,7 @@ function writeJsonAtomic(file, data) {
  * @param {string} file
  * @returns {Record<string, unknown> | null}
  */
-function readJsonObject(file) {
+export function readJsonObject(file) {
   let raw;
   try {
     raw = fs.readFileSync(file, 'utf8');
@@ -234,6 +234,38 @@ export function tryAcquire(dataDir, key, cooldownMs, now = Date.now()) {
         // A leftover mutex goes stale and is reclaimed by the next caller.
         log('debug', `state: cannot release mutex for ${name}`, err);
       }
+    }
+  }
+}
+
+/**
+ * Run `fn` while holding an exclusive mutex file, retrying briefly when another
+ * process holds it.
+ * @template T
+ * @param {string} mutexFile
+ * @param {() => T} fn
+ * @param {{ attempts?: number, waitMs?: number }} [options]
+ * @returns {{ ok: true, value: T } | { ok: false }} Not ok when the mutex stayed busy.
+ * @throws {Error} Whatever `fn` throws, or file system errors other than a busy mutex.
+ */
+export function withMutex(mutexFile, fn, { attempts = 10, waitMs = 20 } = {}) {
+  fs.mkdirSync(path.dirname(mutexFile), { recursive: true });
+  let fd = acquireMutex(mutexFile);
+  for (let attempt = 1; fd === null && attempt < attempts; attempt++) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+    fd = acquireMutex(mutexFile);
+  }
+  if (fd === null) {
+    return { ok: false };
+  }
+  try {
+    return { ok: true, value: fn() };
+  } finally {
+    try {
+      fs.closeSync(fd);
+      fs.rmSync(mutexFile, { force: true });
+    } catch (err) {
+      log('debug', `state: cannot release mutex ${mutexFile}`, err);
     }
   }
 }
