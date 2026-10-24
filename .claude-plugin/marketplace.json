@@ -8,8 +8,8 @@
     {
       "name": "claudio-notify",
       "source": "./",
-      "description": "Audio notifications for Claude Code: distinct, customizable sounds when tasks finish, subagents start or stop, Claude asks a question, or needs permission — per model.",
-      "version": "0.1.0"
+      "description": "Audio notifications for Claude Code: distinct, customizable sounds when tasks finish, subagents start or stop, Claude asks a question, needs permission, or you near a usage limit — per model.",
+      "version": "0.2.0"
     }
   ]
 }
