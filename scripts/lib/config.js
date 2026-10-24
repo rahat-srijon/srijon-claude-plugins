@@ -9,7 +9,7 @@ import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './pa
  * @typedef {AgentEventName | AttentionEventName | UsageNearEventName | UsageResetEventName} EventName
  */
 /** @typedef {'agent_start' | 'agent_done' | 'subagent_start' | 'subagent_done'} AgentEventName */
-/** @typedef {'question' | 'permission' | 'error'} AttentionEventName */
+/** @typedef {'question' | 'error'} AttentionEventName */
 /** @typedef {'usage_5h_near' | 'usage_week_near'} UsageNearEventName */
 /** @typedef {'usage_5h_reset' | 'usage_week_reset'} UsageResetEventName */
 
@@ -20,7 +20,7 @@ import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './pa
  * @property {number | null} volume 0..1, or null to use the global volume.
  * @property {Record<string, string>} [byModel] Agent events only: model family to sound spec.
  * @property {number} [repeatMs] Attention events only: replay the sound this often until the
- *   question, permission or error is dealt with; 0 turns it off.
+ *   question or error is dealt with; 0 turns it off.
  * @property {number[]} [thresholds] Usage "near" events only: percentages that each sound once
  *   per limit window, ascending.
  * @property {number} [minPercent] Usage "reset" events only: the reset sounds only if the window
@@ -83,10 +83,12 @@ export const EVENTS = Object.freeze([
 export const AGENT_EVENTS = Object.freeze(['agent_start', 'agent_done', 'subagent_start', 'subagent_done']);
 
 /**
- * Events that wait for the user and can repeat until dealt with.
+ * Events that wait for the user and can repeat until dealt with. Permission
+ * prompts don't repeat: no hook fires when one is approved, so a reminder
+ * would keep playing while the approved tool runs.
  * @type {readonly AttentionEventName[]}
  */
-export const ATTENTION_EVENTS = Object.freeze(['question', 'permission', 'error']);
+export const ATTENTION_EVENTS = Object.freeze(['question', 'error']);
 
 /**
  * Usage-limit events that sound when a window crosses one of its thresholds.
@@ -147,7 +149,7 @@ export const DEFAULTS = deepFreeze({
     subagent_start: { enabled: false, sound: 'default:subagent-start', volume: null, byModel: {} },
     subagent_done: { enabled: true, sound: 'default:subagent-done', volume: null, byModel: {} },
     question: { enabled: true, sound: 'default:question', volume: null, repeatMs: 30000 },
-    permission: { enabled: true, sound: 'default:permission', volume: null, repeatMs: 30000 },
+    permission: { enabled: true, sound: 'default:permission', volume: null },
     error: { enabled: true, sound: 'default:error', volume: null, repeatMs: 30000 },
     usage_5h_near: {
       enabled: true,

@@ -172,7 +172,7 @@ export async function handle(input, deps = {}) {
       detail: 'permission prompt for the pending question',
     });
   }
-  // Any later hook in the session means the question, permission or error was dealt with.
+  // Any later hook in the session means the question or error was dealt with.
   if (sessionId && clearAttention(dataDir, sessionId)) {
     log('debug', `hook: ${hook} stopped the reminder for session ${sessionId}`);
   }
