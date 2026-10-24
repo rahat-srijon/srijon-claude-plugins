@@ -1172,7 +1172,9 @@ function renderEvent(eventMeta) {
         h('div', { class: 'grow' }, select),
         playButton(id, `Preview ${label} sound`, () => previewEvent(id))),
       renderEventVolume(eventMeta, label),
+      eventMeta.attention ? renderRepeat(eventMeta, label) : null,
       eventMeta.usage === 'near' ? renderThresholds(eventMeta, label) : null,
+      eventMeta.usage === 'near' ? renderUsageRepeat(eventMeta, label) : null,
       eventMeta.usage === 'reset' ? renderMinPercent(eventMeta, label) : null,
       eventMeta.agent ? renderPerModel(eventMeta, label) : null));
   return card;
@@ -1194,6 +1196,49 @@ function renderThresholds(eventMeta, label) {
   return h('div', {},
     field,
     h('p', { class: 'hint', id: `${id}-thresholds-hint`, text: 'Comma-separated. Each one plays once per limit window.' }));
+}
+
+function msField({ id, text, value, label, hint, onValid }) {
+  return h('div', {},
+    h('div', { class: 'inline-field' },
+      h('label', { for: id, text }),
+      countInput({ id, value, label, onValid }),
+      h('span', { text: 'ms' })),
+    h('p', { class: 'hint', text: hint }));
+}
+
+function renderRepeat(eventMeta, label) {
+  const id = eventMeta.id;
+  return msField({
+    id: `${id}-repeat`,
+    text: 'Repeat every',
+    value: ui.state.events[id].repeatMs,
+    label: `${label}: repeat interval in milliseconds`,
+    hint: 'Keeps playing until you respond. 0 turns it off; the shortest interval is 1000 ms.',
+    onValid: (n) => { ui.state.events[id].repeatMs = n; markChanged(); },
+  });
+}
+
+function renderUsageRepeat(eventMeta, label) {
+  const id = eventMeta.id;
+  const event = ui.state.events[id];
+  return h('div', { class: 'stack' },
+    msField({
+      id: `${id}-working`,
+      text: 'Once hit, repeat while Claude works every',
+      value: event.repeatWhileWorkingMs,
+      label: `${label}: repeat interval while working, in milliseconds`,
+      hint: 'Plays during running tasks until the window resets. 0 turns it off.',
+      onValid: (n) => { ui.state.events[id].repeatWhileWorkingMs = n; markChanged(); },
+    }),
+    h('label', { class: 'check', for: `${id}-on-prompt` },
+      h('input', {
+        type: 'checkbox',
+        id: `${id}-on-prompt`,
+        checked: event.remindOnPrompt,
+        onchange: (e) => { ui.state.events[id].remindOnPrompt = e.target.checked; markChanged(); },
+      }),
+      h('span', { text: 'Once hit, play again on every prompt' })));
 }
 
 function renderMinPercent(eventMeta, label) {
