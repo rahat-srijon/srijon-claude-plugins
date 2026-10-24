@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Per-event `thresholds` for the "near" events and `minPercent` for the reset events.
 - An opt-in reset timer (`usageResetTimer`) that plays reset sounds when no session is running.
 - Four bundled sounds for the usage events, and a "Usage limits" section in the settings page.
+- An `agent_start` event that plays when Claude starts working on a prompt. Off by default.
+- Question, permission and error sounds repeat until you respond (`repeatMs`, 30 seconds by default, 0 turns it off).
+- Usage "near" sounds can repeat while Claude works (`repeatWhileWorkingMs`) or on every prompt (`remindOnPrompt`) once a threshold is hit. Both off by default.
 
 ## [0.1.0] - 2026-10-23
 
