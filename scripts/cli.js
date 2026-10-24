@@ -11,10 +11,12 @@ import {
   resolveSound,
   saveConfig,
 } from './lib/config.js';
-import { dataDir } from './lib/paths.js';
+import { dataDir, pluginRoot } from './lib/paths.js';
 import { backend, play, speak } from './lib/player/index.js';
 import { ttsBackend } from './lib/player/tts.js';
 import { isQuietTime } from './lib/state.js';
+import { applySetup, planSetup, readSetupRecord, teardown } from './lib/statusline.js';
+import { timerRunning } from './usage.js';
 
 const PREFIX = 'claudio-notify';
 const TEST_GAP_MS = 300;
@@ -22,9 +24,9 @@ const DEFAULT_MODEL_FAMILY = 'other';
 const SERVER_START_TIMEOUT_MS = 10000;
 
 /** Flags that take a value; any other flag is rejected. */
-const VALUE_FLAGS = Object.freeze(['data-dir', 'model']);
+const VALUE_FLAGS = Object.freeze(['data-dir', 'model', 'settings']);
 /** Flags that take no value and are stored as 'true'. */
-const BOOLEAN_FLAGS = Object.freeze(['no-open']);
+const BOOLEAN_FLAGS = Object.freeze(['no-open', 'yes']);
 
 /**
  * @typedef {object} Invocation
@@ -118,12 +120,93 @@ function status() {
         `${eventConfig.enabled ? 'on ' : 'off'}  ${eventConfig.sound}`,
       ]);
     }),
+    ['Usage alerts', usageStatus(config.usageResetTimer)],
     ['Audio backend', backend() ?? 'none found'],
     ['TTS backend', ttsBackend() ?? 'none found'],
     ['Data dir', dataDir()],
     ['Config file', path.join(dataDir(), 'config.json')],
   ];
   console.log(alignRows(rows).join('\n'));
+}
+
+/**
+ * @param {boolean} timerEnabled
+ * @returns {string}
+ */
+function usageStatus(timerEnabled) {
+  if (!readSetupRecord(dataDir())) {
+    return 'not set up (run /claudio-notify:setup-usage)';
+  }
+  const timer = timerEnabled ? `reset timer ${timerRunning(dataDir()) ? 'running' : 'idle'}` : 'reset timer off';
+  return `set up through the status line, ${timer}`;
+}
+
+/**
+ * @param {import('./lib/statusline.js').StatusLine | null} statusLine
+ * @returns {string}
+ */
+function describeStatusLine(statusLine) {
+  return statusLine?.command ? statusLine.command : '(none)';
+}
+
+/**
+ * Show what usage-limit setup changes, and apply it with --yes.
+ * @param {Invocation} invocation
+ * @returns {number}
+ */
+function setupUsage({ flags }) {
+  const roots = { dataDir: dataDir(), pluginRoot: pluginRoot() };
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const plan = planSetup({ dataDir: roots.dataDir, settingsFile: flags.settings && path.resolve(flags.settings), projectDir });
+  if (plan.status === 'installed') {
+    applySetup(plan, roots);
+    console.log(`${PREFIX}: usage-limit sounds are already set up. Nothing to change.`);
+    console.log(`Status line: ${describeStatusLine(plan.next)}`);
+    return 0;
+  }
+  if (flags.yes === 'true') {
+    applySetup(plan, roots);
+    console.log(`${PREFIX}: usage-limit sounds are set up. They start with the next status line update.`);
+    console.log('Undo with /claudio-notify:teardown-usage.');
+    return 0;
+  }
+  const lines = [
+    `${PREFIX}: usage-limit sounds need your status line, the only place Claude Code shares limit data.`,
+    '',
+    `Planned change to statusLine.command in ${plan.settingsFile}:`,
+    `  now:   ${describeStatusLine(plan.previous)}`,
+    `  after: ${describeStatusLine(plan.next)}`,
+    '',
+    plan.previous?.command
+      ? 'Your status line shows the same output as before: the shim reads the limit data and passes it on to your command unchanged.'
+      : 'You have no status line now, so it stays empty. Note that with any custom status line, Claude Code hides most footer key hints.',
+    `The shim is ${plan.shimFile}. Each session start points it at the current plugin version.`,
+    `settings.json is backed up to ${plan.backupFile} first.`,
+    '',
+    'Limit data only reaches the status line on Pro and Max plans, after the first response in a session.',
+    'Undo with /claudio-notify:teardown-usage, and run it before uninstalling claudio-notify,',
+    'because uninstalling can delete the plugin data directory and the shim with it.',
+    ...plan.warnings.map((warning) => `Warning: ${warning}`),
+  ];
+  console.log(lines.join('\n'));
+  return 0;
+}
+
+/**
+ * Restore the status line from before setup.
+ * @param {Invocation} invocation
+ * @returns {number}
+ */
+function teardownUsage({ flags }) {
+  const result = teardown({ dataDir: dataDir(), settingsFile: flags.settings && path.resolve(flags.settings) });
+  if (result.status === 'not-installed') {
+    console.log(`${PREFIX}: usage-limit sounds are not set up. Nothing to change.`);
+  } else if (result.status === 'changed') {
+    console.log(`${PREFIX}: your status line no longer used claudio-notify, so ${result.settingsFile} was left as is. Usage-limit sounds are off.`);
+  } else {
+    console.log(`${PREFIX}: usage-limit sounds are off. Status line restored to: ${describeStatusLine(result.restored)}`);
+  }
+  return 0;
 }
 
 /**
@@ -297,6 +380,16 @@ const COMMANDS = Object.freeze({
     usage: '[--no-open]',
     run: openSettings,
   },
+  'setup-usage': {
+    summary: 'Show how usage-limit sounds hook into the status line; --yes applies it',
+    usage: '[--yes] [--settings <file>]',
+    run: setupUsage,
+  },
+  'teardown-usage': {
+    summary: 'Turn usage-limit sounds off and restore the previous status line',
+    usage: '[--settings <file>]',
+    run: teardownUsage,
+  },
   help: { summary: 'Show this help', run: () => printHelp() },
 });
 
@@ -315,7 +408,8 @@ function printHelp() {
     ...alignRows(rows).map((line) => `  ${line}`),
     '',
     'Options:',
-    '  --data-dir <dir>  Directory holding config.json (default: the plugin data dir)',
+    '  --data-dir <dir>   Directory holding config.json (default: the plugin data dir)',
+    '  --settings <file>  Claude Code settings file to edit (default: ~/.claude/settings.json)',
   ].join('\n'));
 }
 
