@@ -7,7 +7,13 @@ import { familyOf, modelFromAgentDefinition, modelFromTranscript } from './lib/m
 import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './lib/paths.js';
 import { canSound, playEvent, spawnDetached as defaultSpawnDetached } from './lib/play.js';
 import { play as defaultPlay, speak as defaultSpeak } from './lib/player/index.js';
-import { clearAttention, joinUsageReminder, leaveUsageReminders, setAttention } from './lib/reminders.js';
+import {
+  clearAttention,
+  joinUsageReminder,
+  leaveUsageReminders,
+  readAttention,
+  setAttention,
+} from './lib/reminders.js';
 import { openSession } from './lib/state.js';
 import { refreshShim } from './lib/statusline.js';
 import { WINDOWS, WINDOW_NAMES, hitWindows, readUsageState } from './lib/usage.js';
@@ -156,6 +162,16 @@ export async function handle(input, deps = {}) {
   const sessionId = nonEmptyString(input.session_id) ?? '';
   const roots = { dataDir, pluginRoot };
 
+  // Claude Code also sends a permission prompt for a question dialog it shows.
+  if (sessionId && eventFor(input) === 'permission' && readAttention(dataDir, sessionId)?.event === 'question') {
+    return finish(hook, {
+      status: 'ignored',
+      event: null,
+      model: null,
+      family: null,
+      detail: 'permission prompt for the pending question',
+    });
+  }
   // Any later hook in the session means the question, permission or error was dealt with.
   if (sessionId && clearAttention(dataDir, sessionId)) {
     log('debug', `hook: ${hook} stopped the reminder for session ${sessionId}`);
@@ -190,11 +206,13 @@ export async function handle(input, deps = {}) {
   if (event === 'agent_start') {
     await remindUsageOnPrompt(config, input, sessionId, { play, speak, spawnDetached, ...roots });
   }
-  const repeatMs = config.events[event].repeatMs ?? 0;
-  if (sessionId && isAttentionEvent(event) && repeatMs > 0 && canSound(config, event)) {
+  if (sessionId && isAttentionEvent(event)) {
+    // Recorded even when it does not repeat, so the question's own permission prompt is recognized.
     const transcriptPath = nonEmptyString(input.transcript_path);
     const reminder = setAttention(dataDir, sessionId, { event, family, transcriptPath, projectDir: projectDir ?? null });
-    spawnDetached('remind.js', ['attention', sessionId, reminder.id], roots);
+    if ((config.events[event].repeatMs ?? 0) > 0 && canSound(config, event)) {
+      spawnDetached('remind.js', ['attention', sessionId, reminder.id], roots);
+    }
   }
   return finish(hook, { ...result, event, model, family });
 }
