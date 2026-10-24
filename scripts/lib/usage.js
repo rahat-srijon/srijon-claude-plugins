@@ -45,7 +45,7 @@ export const WINDOWS = Object.freeze({
   seven_day: Object.freeze({ near: 'usage_week_near', reset: 'usage_week_reset' }),
 });
 
-const WINDOW_NAMES = /** @type {readonly WindowName[]} */ (Object.freeze(Object.keys(WINDOWS)));
+export const WINDOW_NAMES = /** @type {readonly WindowName[]} */ (Object.freeze(Object.keys(WINDOWS)));
 
 /** A drop of at least this many points within a window means it was reset early. */
 const DROP_POINTS = 1;
@@ -148,6 +148,20 @@ export function nextReset(state, config) {
     }
   }
   return next;
+}
+
+/**
+ * Windows that are past a threshold now: a threshold sounded, and the window
+ * has neither reset nor ended.
+ * @param {UsageState} state
+ * @param {number} now Unix seconds.
+ * @returns {WindowName[]}
+ */
+export function hitWindows(state, now) {
+  return WINDOW_NAMES.filter((name) => {
+    const window = state[name];
+    return window !== undefined && !window.reset && window.resetsAt > now && window.fired.length > 0;
+  });
 }
 
 /**

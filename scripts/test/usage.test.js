@@ -315,11 +315,11 @@ describe('onStatusLine', () => {
     });
   }
 
-  /** @returns {{ calls: string[][], spawnDetached: (args: string[]) => void }} */
+  /** @returns {{ calls: string[][], spawnDetached: (script: string, args: string[]) => void }} */
   function recorder() {
     /** @type {string[][]} */
     const calls = [];
-    return { calls, spawnDetached: (args) => { calls.push(args); } };
+    return { calls, spawnDetached: (script, args) => { calls.push(args); } };
   }
 
   it('starts one player for a crossing and none for a repeat', async () => {

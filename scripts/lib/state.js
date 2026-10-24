@@ -12,6 +12,7 @@ let pruned = false;
 /**
  * @typedef {object} SessionState
  * @property {number | null} turnStartedAt
+ * @property {number | null} turnEndedAt
  * @property {string | null} model
  * @property {number} updatedAt
  */
@@ -19,6 +20,9 @@ let pruned = false;
 /**
  * @typedef {object} Session
  * @property {(now?: number) => void} markTurnStart
+ * @property {(now?: number) => void} markTurnEnd
+ * @property {() => boolean} turnActive Whether a turn started and has not ended (an Esc
+ *   interrupt ends a turn without any hook, so callers check the transcript too).
  * @property {(now?: number) => number | null} turnSeconds
  * @property {() => string | null} getModel
  * @property {(modelId: string) => void} setModel
@@ -130,6 +134,7 @@ export function openSession(dataDir, sessionId) {
     const raw = readJsonObject(file) ?? {};
     return {
       turnStartedAt: typeof raw.turnStartedAt === 'number' ? raw.turnStartedAt : null,
+      turnEndedAt: typeof raw.turnEndedAt === 'number' ? raw.turnEndedAt : null,
       model: typeof raw.model === 'string' ? raw.model : null,
       updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
     };
@@ -147,6 +152,13 @@ export function openSession(dataDir, sessionId) {
   return {
     markTurnStart(now = Date.now()) {
       save({ turnStartedAt: now });
+    },
+    markTurnEnd(now = Date.now()) {
+      save({ turnEndedAt: now });
+    },
+    turnActive() {
+      const { turnStartedAt, turnEndedAt } = load();
+      return turnStartedAt !== null && (turnEndedAt === null || turnEndedAt < turnStartedAt);
     },
     turnSeconds(now = Date.now()) {
       const { turnStartedAt } = load();
