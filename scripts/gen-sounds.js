@@ -95,6 +95,48 @@ const SOUNDS = [
       { freq: 196, start: 0.22, dur: 0.28 },
     ],
   },
+  {
+    file: 'usage-near.wav',
+    length: 0.45,
+    timbre: 'bell',
+    peakDb: -4,
+    notes: [
+      { freq: 880, start: 0, dur: 0.22 },
+      { freq: 739.99, start: 0.18, dur: 0.27 },
+    ],
+  },
+  {
+    file: 'usage-reset.wav',
+    length: 0.5,
+    timbre: 'soft',
+    peakDb: -3,
+    notes: [
+      { freq: 659.25, start: 0, dur: 0.25, from: 440 },
+      { freq: 987.77, start: 0.2, dur: 0.3 },
+    ],
+  },
+  {
+    file: 'usage-week-near.wav',
+    length: 0.65,
+    timbre: 'bell',
+    peakDb: -4,
+    notes: [
+      { freq: 659.25, start: 0, dur: 0.22 },
+      { freq: 554.37, start: 0.18, dur: 0.22 },
+      { freq: 440, start: 0.36, dur: 0.29 },
+    ],
+  },
+  {
+    file: 'usage-week-reset.wav',
+    length: 0.75,
+    timbre: 'soft',
+    peakDb: -3,
+    notes: [
+      { freq: 587.33, start: 0, dur: 0.25, from: 392 },
+      { freq: 783.99, start: 0.2, dur: 0.25 },
+      { freq: 1174.66, start: 0.4, dur: 0.35 },
+    ],
+  },
 ];
 
 /**
