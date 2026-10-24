@@ -639,3 +639,70 @@ describe('saveConfig', () => {
     assert.deepEqual(fs.readdirSync(dataDir), ['config.json']);
   });
 });
+
+describe('loadConfig: usage events', () => {
+  it('has thresholds on the near events and minPercent on the reset events', () => {
+    const config = load();
+    assert.deepEqual(config.events.usage_5h_near.thresholds, [80, 95]);
+    assert.deepEqual(config.events.usage_week_near.thresholds, [80, 95]);
+    assert.equal(config.events.usage_5h_reset.minPercent, 80);
+    assert.equal(config.events.usage_week_reset.minPercent, 80);
+    assert.equal(config.usageResetTimer, false);
+    assert.equal(config.events.usage_5h_reset.thresholds, undefined);
+    assert.equal(config.events.usage_5h_near.minPercent, undefined);
+    assert.equal(config.events.question.thresholds, undefined);
+  });
+
+  it('sorts thresholds, drops duplicates and invalid entries', () => {
+    writeGlobal({ events: { usage_5h_near: { thresholds: [95, 50, 50, 0, 101, '70', null, 99.5] } } });
+    assert.deepEqual(load().events.usage_5h_near.thresholds, [50, 95, 99.5]);
+  });
+
+  it('keeps at most ten thresholds', () => {
+    writeGlobal({ events: { usage_week_near: { thresholds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] } } });
+    assert.deepEqual(load().events.usage_week_near.thresholds, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it('accepts an empty threshold list but replaces a non-list', () => {
+    writeGlobal({ events: { usage_5h_near: { thresholds: [] }, usage_week_near: { thresholds: 80 } } });
+    const config = load();
+    assert.deepEqual(config.events.usage_5h_near.thresholds, []);
+    assert.deepEqual(config.events.usage_week_near.thresholds, [80, 95]);
+  });
+
+  it('clamps minPercent to 0..100', () => {
+    writeGlobal({ events: { usage_5h_reset: { minPercent: 150 }, usage_week_reset: { minPercent: -5 } } });
+    const config = load();
+    assert.equal(config.events.usage_5h_reset.minPercent, 100);
+    assert.equal(config.events.usage_week_reset.minPercent, 0);
+  });
+
+  it('drops keys that belong to another kind of event', () => {
+    writeGlobal({ events: { usage_5h_reset: { thresholds: [50] }, agent_done: { minPercent: 10 } } });
+    const config = load();
+    assert.equal(config.events.usage_5h_reset.thresholds, undefined);
+    assert.equal(config.events.agent_done.minPercent, undefined);
+  });
+
+  it('validates usageResetTimer', () => {
+    writeGlobal({ usageResetTimer: 'yes' });
+    assert.equal(load().usageResetTimer, false);
+    writeGlobal({ usageResetTimer: true });
+    assert.equal(load().usageResetTimer, true);
+  });
+
+  it('resolves the bundled usage sounds', () => {
+    const config = load();
+    for (const id of ['usage-near', 'usage-reset', 'usage-week-near', 'usage-week-reset']) {
+      fs.writeFileSync(path.join(pluginRoot, 'sounds', `${id}.wav`), '');
+    }
+    assert.deepEqual(resolveSound(config, 'usage_week_reset', 'other', { pluginRoot, dataDir }), {
+      kind: 'file',
+      value: path.join(pluginRoot, 'sounds', 'usage-week-reset.wav'),
+    });
+  });
+
+  it('builds a spoken phrase for usage events', () => {
+    assert.equal(ttsText(load(), 'usage_5h_near', 'other'), 'Claude is near the 5-hour limit');
+  });
+});
