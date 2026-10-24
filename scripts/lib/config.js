@@ -6,10 +6,10 @@ import { log } from './log.js';
 import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './paths.js';
 
 /**
- * @typedef {'agent_done' | 'subagent_start' | 'subagent_done' | 'question' | 'permission' | 'error'
- *   | UsageNearEventName | UsageResetEventName} EventName
+ * @typedef {AgentEventName | AttentionEventName | UsageNearEventName | UsageResetEventName} EventName
  */
-/** @typedef {'agent_done' | 'subagent_start' | 'subagent_done'} AgentEventName */
+/** @typedef {'agent_start' | 'agent_done' | 'subagent_start' | 'subagent_done'} AgentEventName */
+/** @typedef {'question' | 'permission' | 'error'} AttentionEventName */
 /** @typedef {'usage_5h_near' | 'usage_week_near'} UsageNearEventName */
 /** @typedef {'usage_5h_reset' | 'usage_week_reset'} UsageResetEventName */
 
@@ -19,10 +19,16 @@ import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './pa
  * @property {string} sound Sound spec, see {@link parseSoundSpec}.
  * @property {number | null} volume 0..1, or null to use the global volume.
  * @property {Record<string, string>} [byModel] Agent events only: model family to sound spec.
+ * @property {number} [repeatMs] Attention events only: replay the sound this often until the
+ *   question, permission or error is dealt with; 0 turns it off.
  * @property {number[]} [thresholds] Usage "near" events only: percentages that each sound once
  *   per limit window, ascending.
  * @property {number} [minPercent] Usage "reset" events only: the reset sounds only if the window
  *   that ended had reached this percentage.
+ * @property {number} [repeatWhileWorkingMs] Usage "near" events only: once a threshold is hit,
+ *   replay the sound this often while Claude is working; 0 turns it off.
+ * @property {boolean} [remindOnPrompt] Usage "near" events only: replay the sound on every prompt
+ *   once a threshold is hit.
  */
 
 /**
@@ -57,6 +63,7 @@ import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './pa
 
 /** @type {readonly EventName[]} */
 export const EVENTS = Object.freeze([
+  'agent_start',
   'agent_done',
   'subagent_start',
   'subagent_done',
@@ -73,7 +80,13 @@ export const EVENTS = Object.freeze([
  * Events that support per-model sound overrides.
  * @type {readonly AgentEventName[]}
  */
-export const AGENT_EVENTS = Object.freeze(['agent_done', 'subagent_start', 'subagent_done']);
+export const AGENT_EVENTS = Object.freeze(['agent_start', 'agent_done', 'subagent_start', 'subagent_done']);
+
+/**
+ * Events that wait for the user and can repeat until dealt with.
+ * @type {readonly AttentionEventName[]}
+ */
+export const ATTENTION_EVENTS = Object.freeze(['question', 'permission', 'error']);
 
 /**
  * Usage-limit events that sound when a window crosses one of its thresholds.
@@ -89,6 +102,7 @@ export const USAGE_RESET_EVENTS = Object.freeze(['usage_5h_reset', 'usage_week_r
 
 /** @type {Readonly<Record<EventName, string>>} */
 export const EVENT_LABELS = Object.freeze({
+  agent_start: 'started working',
   agent_done: 'finished',
   subagent_start: 'started a subagent',
   subagent_done: 'subagent finished',
@@ -106,6 +120,7 @@ export const EVENT_LABELS = Object.freeze({
  * @type {readonly string[]}
  */
 export const BUNDLED_SOUNDS = Object.freeze([
+  'start',
   'done',
   'subagent-start',
   'subagent-done',
@@ -127,15 +142,30 @@ export const DEFAULTS = deepFreeze({
   minTurnSeconds: 15,
   cooldownMs: 1500,
   events: {
+    agent_start: { enabled: false, sound: 'default:start', volume: null, byModel: {} },
     agent_done: { enabled: true, sound: 'default:done', volume: null, byModel: {} },
     subagent_start: { enabled: false, sound: 'default:subagent-start', volume: null, byModel: {} },
     subagent_done: { enabled: true, sound: 'default:subagent-done', volume: null, byModel: {} },
-    question: { enabled: true, sound: 'default:question', volume: null },
-    permission: { enabled: true, sound: 'default:permission', volume: null },
-    error: { enabled: true, sound: 'default:error', volume: null },
-    usage_5h_near: { enabled: true, sound: 'default:usage-near', volume: null, thresholds: [80, 95] },
+    question: { enabled: true, sound: 'default:question', volume: null, repeatMs: 30000 },
+    permission: { enabled: true, sound: 'default:permission', volume: null, repeatMs: 30000 },
+    error: { enabled: true, sound: 'default:error', volume: null, repeatMs: 30000 },
+    usage_5h_near: {
+      enabled: true,
+      sound: 'default:usage-near',
+      volume: null,
+      thresholds: [80, 95],
+      repeatWhileWorkingMs: 0,
+      remindOnPrompt: false,
+    },
     usage_5h_reset: { enabled: true, sound: 'default:usage-reset', volume: null, minPercent: 80 },
-    usage_week_near: { enabled: true, sound: 'default:usage-week-near', volume: null, thresholds: [80, 95] },
+    usage_week_near: {
+      enabled: true,
+      sound: 'default:usage-week-near',
+      volume: null,
+      thresholds: [80, 95],
+      repeatWhileWorkingMs: 0,
+      remindOnPrompt: false,
+    },
     usage_week_reset: { enabled: true, sound: 'default:usage-week-reset', volume: null, minPercent: 80 },
   },
   usageResetTimer: false,
@@ -149,9 +179,13 @@ const AUDIO_EXT_RE = /\.(?:wav|mp3)$/i;
 const PATH_CHARS_RE = /[\\/:]/;
 const EVENT_KEYS = Object.freeze(['enabled', 'sound', 'volume']);
 const AGENT_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'byModel']);
-const USAGE_NEAR_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'thresholds']);
+const ATTENTION_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'repeatMs']);
+const USAGE_NEAR_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'thresholds', 'repeatWhileWorkingMs', 'remindOnPrompt']);
 const USAGE_RESET_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'minPercent']);
 const MAX_THRESHOLDS = 10;
+/** Repeating sounds can't come faster than this. */
+export const MIN_REPEAT_MS = 1000;
+const MAX_REPEAT_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Parse a sound spec string.
@@ -339,6 +373,14 @@ function isAgentEvent(event) {
 
 /**
  * @param {EventName} event
+ * @returns {event is AttentionEventName}
+ */
+export function isAttentionEvent(event) {
+  return /** @type {readonly string[]} */ (ATTENTION_EVENTS).includes(event);
+}
+
+/**
+ * @param {EventName} event
  * @returns {event is UsageNearEventName}
  */
 export function isUsageNearEvent(event) {
@@ -448,8 +490,18 @@ function normalizeEvents(value, modelPatterns) {
     if (agent) {
       out.byModel = normalizeByModel(`${keyPath}.byModel`, raw.byModel, modelPatterns);
     }
+    if (isAttentionEvent(event)) {
+      out.repeatMs = numberOr(`${keyPath}.repeatMs`, raw.repeatMs, def.repeatMs ?? 0, toRepeatMs);
+    }
     if (near) {
       out.thresholds = normalizeThresholds(`${keyPath}.thresholds`, raw.thresholds, def.thresholds ?? []);
+      out.repeatWhileWorkingMs = numberOr(
+        `${keyPath}.repeatWhileWorkingMs`,
+        raw.repeatWhileWorkingMs,
+        def.repeatWhileWorkingMs ?? 0,
+        toRepeatMs,
+      );
+      out.remindOnPrompt = validOr(`${keyPath}.remindOnPrompt`, raw.remindOnPrompt, def.remindOnPrompt ?? false, isBoolean);
     }
     if (reset) {
       out.minPercent = numberOr(`${keyPath}.minPercent`, raw.minPercent, def.minPercent ?? 0, clampPercent);
@@ -489,6 +541,9 @@ function normalizeByModel(keyPath, value, modelPatterns) {
 function eventKeys(event) {
   if (isAgentEvent(event)) {
     return AGENT_EVENT_KEYS;
+  }
+  if (isAttentionEvent(event)) {
+    return ATTENTION_EVENT_KEYS;
   }
   if (isUsageNearEvent(event)) {
     return USAGE_NEAR_EVENT_KEYS;
@@ -725,6 +780,15 @@ function clampUnit(value) {
  */
 function clampPercent(value) {
   return Math.min(100, Math.max(0, value));
+}
+
+/**
+ * 0 (or less) turns repeating off; anything else is kept between MIN_REPEAT_MS and a day.
+ * @param {number} value
+ * @returns {number}
+ */
+function toRepeatMs(value) {
+  return value <= 0 ? 0 : Math.min(MAX_REPEAT_MS, Math.max(MIN_REPEAT_MS, Math.round(value)));
 }
 
 /**
