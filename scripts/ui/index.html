@@ -139,6 +139,8 @@
 
   .status .warn { color: var(--warn); font-weight: 600; }
 
+  .warn-text { color: var(--warn); }
+
   .top-controls {
     display: flex;
     flex-wrap: wrap;
@@ -518,6 +520,7 @@ const ERROR_TOAST_MS = 6000;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const UPLOAD_EXT_RE = /\.(?:wav|mp3)$/i;
 const FAMILY_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+const MAX_THRESHOLDS = 10;
 const RESERVED_FAMILIES = new Set(['other']);
 const SOUND_GROUPS = [['bundled', 'Built-in'], ['user', 'Your sounds'], ['tts', 'Speech']];
 const UPLOAD_ERRORS = {
@@ -901,18 +904,19 @@ function rangeControl({ id, value, label, onInput }) {
   return [input, output];
 }
 
-function countInput({ id, value, label, onValid }) {
+function countInput({ id, value, label, max, onValid }) {
   return h('input', {
     type: 'number',
     id,
     min: 0,
+    max,
     step: 1,
     inputMode: 'numeric',
     value: String(value),
     'aria-label': label,
     oninput: (e) => {
       const n = Number(e.target.value);
-      const valid = e.target.value !== '' && Number.isInteger(n) && n >= 0;
+      const valid = e.target.value !== '' && Number.isInteger(n) && n >= 0 && (max === undefined || n <= max);
       e.target.setAttribute('aria-invalid', String(!valid));
       if (valid) {
         onValid(n);
@@ -949,6 +953,14 @@ function textInput({ id, value, label, describedBy, isValid, onValid }) {
 
 function isNonEmpty(text) {
   return text.trim() !== '';
+}
+
+/* "80, 95" to [80, 95]; null unless every entry is a percentage above 0. */
+function parseThresholds(text) {
+  const parts = text.split(/[\s,]+/).filter(Boolean);
+  const values = parts.map(Number);
+  const valid = parts.length <= MAX_THRESHOLDS && values.every((n) => Number.isFinite(n) && n > 0 && n <= 100);
+  return valid ? [...new Set(values)].sort((a, b) => a - b) : null;
 }
 
 /* ---------- Sections ---------- */
@@ -1160,14 +1172,72 @@ function renderEvent(eventMeta) {
         h('div', { class: 'grow' }, select),
         playButton(id, `Preview ${label} sound`, () => previewEvent(id))),
       renderEventVolume(eventMeta, label),
+      eventMeta.usage === 'near' ? renderThresholds(eventMeta, label) : null,
+      eventMeta.usage === 'reset' ? renderMinPercent(eventMeta, label) : null,
       eventMeta.agent ? renderPerModel(eventMeta, label) : null));
   return card;
 }
 
+function renderThresholds(eventMeta, label) {
+  const id = eventMeta.id;
+  const field = h('div', { class: 'inline-field' },
+    h('label', { for: `${id}-thresholds`, text: 'Play at' }),
+    h('div', { class: 'grow' }, textInput({
+      id: `${id}-thresholds`,
+      value: ui.state.events[id].thresholds.join(', '),
+      label: `${label} thresholds in percent`,
+      describedBy: `${id}-thresholds-hint`,
+      isValid: (text) => parseThresholds(text) !== null,
+      onValid: (text) => { ui.state.events[id].thresholds = parseThresholds(text); markChanged(); },
+    })),
+    h('span', { text: '% used' }));
+  return h('div', {},
+    field,
+    h('p', { class: 'hint', id: `${id}-thresholds-hint`, text: 'Comma-separated. Each one plays once per limit window.' }));
+}
+
+function renderMinPercent(eventMeta, label) {
+  const id = eventMeta.id;
+  return h('div', { class: 'inline-field' },
+    h('label', { for: `${id}-min`, text: 'Only if the ended window reached' }),
+    countInput({
+      id: `${id}-min`,
+      value: ui.state.events[id].minPercent,
+      label: `${label}: minimum usage in percent`,
+      max: 100,
+      onValid: (n) => { ui.state.events[id].minPercent = n; markChanged(); },
+    }),
+    h('span', { text: '% used' }));
+}
+
+function renderUsageIntro() {
+  const setUp = ui.meta.usageSetup;
+  return h('section', { class: 'card stack', 'aria-labelledby': 'usage-title' },
+    h('div', {},
+      h('h2', { id: 'usage-title', text: 'Setup' }),
+      h('p', { class: setUp ? 'hint' : 'hint warn-text' }, setUp
+        ? 'Set up. Sounds play when your status line reports the 5-hour and weekly limits (Pro and Max plans).'
+        : ['Not set up yet. Run ', h('code', { text: '/claudio-notify:setup-usage' }), ' in Claude Code. Needs a Pro or Max plan.'])),
+    h('div', {},
+      switchControl({
+        id: 'usage-timer',
+        label: 'Play reset sounds when no session is running',
+        checked: ui.state.usageResetTimer,
+        onChange: (on) => { ui.state.usageResetTimer = on; markChanged(); },
+      }),
+      h('p', { class: 'hint', text: 'Keeps a small background process waiting for the reset, only while a reset is due.' })));
+}
+
 function renderEvents() {
+  const events = ui.meta.events.filter((e) => !e.usage);
+  const usage = ui.meta.events.filter((e) => e.usage);
   return h('div', {},
     h('h2', { class: 'section-title', text: 'Events' }),
-    h('div', { class: 'events' }, ui.meta.events.map(renderEvent)));
+    h('div', { class: 'events' }, events.map(renderEvent)),
+    usage.length
+      ? [h('h2', { class: 'section-title', text: 'Usage limits' }),
+        h('div', { class: 'events' }, renderUsageIntro(), usage.map(renderEvent))]
+      : null);
 }
 
 /* ---------- Your sounds ---------- */
