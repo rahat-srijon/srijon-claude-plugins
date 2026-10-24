@@ -706,3 +706,43 @@ describe('loadConfig: usage events', () => {
     assert.equal(ttsText(load(), 'usage_5h_near', 'other'), 'Claude is near the 5-hour limit');
   });
 });
+
+describe('loadConfig: phase 2 options', () => {
+  it('has agent_start off with per-model sounds, and the repeat defaults', () => {
+    const config = load();
+    assert.equal(config.events.agent_start.enabled, false);
+    assert.equal(config.events.agent_start.sound, 'default:start');
+    assert.deepEqual(config.events.agent_start.byModel, {});
+    for (const event of /** @type {const} */ (['question', 'permission', 'error'])) {
+      assert.equal(config.events[event].repeatMs, 30000);
+    }
+    assert.equal(config.events.agent_done.repeatMs, undefined);
+    assert.equal(config.events.usage_5h_near.repeatWhileWorkingMs, 0);
+    assert.equal(config.events.usage_week_near.remindOnPrompt, false);
+    assert.equal(config.events.usage_5h_reset.remindOnPrompt, undefined);
+  });
+
+  it('keeps 0 as off and raises short intervals to 1000 ms', () => {
+    writeGlobal({
+      events: {
+        question: { repeatMs: 0 },
+        permission: { repeatMs: 250 },
+        error: { repeatMs: -5 },
+        usage_5h_near: { repeatWhileWorkingMs: 1500.4, remindOnPrompt: 'yes' },
+      },
+    });
+    const config = load();
+    assert.equal(config.events.question.repeatMs, 0);
+    assert.equal(config.events.permission.repeatMs, 1000);
+    assert.equal(config.events.error.repeatMs, 0);
+    assert.equal(config.events.usage_5h_near.repeatWhileWorkingMs, 1500);
+    assert.equal(config.events.usage_5h_near.remindOnPrompt, false);
+  });
+
+  it('drops repeat keys on events that do not support them', () => {
+    writeGlobal({ events: { agent_done: { repeatMs: 5000 }, question: { remindOnPrompt: true } } });
+    const config = load();
+    assert.equal(config.events.agent_done.repeatMs, undefined);
+    assert.equal(config.events.question.remindOnPrompt, undefined);
+  });
+});
