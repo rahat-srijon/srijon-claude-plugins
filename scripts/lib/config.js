@@ -5,8 +5,13 @@ import path from 'node:path';
 import { log } from './log.js';
 import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './paths.js';
 
-/** @typedef {'agent_done' | 'subagent_start' | 'subagent_done' | 'question' | 'permission' | 'error'} EventName */
+/**
+ * @typedef {'agent_done' | 'subagent_start' | 'subagent_done' | 'question' | 'permission' | 'error'
+ *   | UsageNearEventName | UsageResetEventName} EventName
+ */
 /** @typedef {'agent_done' | 'subagent_start' | 'subagent_done'} AgentEventName */
+/** @typedef {'usage_5h_near' | 'usage_week_near'} UsageNearEventName */
+/** @typedef {'usage_5h_reset' | 'usage_week_reset'} UsageResetEventName */
 
 /**
  * @typedef {object} EventConfig
@@ -14,6 +19,10 @@ import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './pa
  * @property {string} sound Sound spec, see {@link parseSoundSpec}.
  * @property {number | null} volume 0..1, or null to use the global volume.
  * @property {Record<string, string>} [byModel] Agent events only: model family to sound spec.
+ * @property {number[]} [thresholds] Usage "near" events only: percentages that each sound once
+ *   per limit window, ascending.
+ * @property {number} [minPercent] Usage "reset" events only: the reset sounds only if the window
+ *   that ended had reached this percentage.
  */
 
 /**
@@ -32,6 +41,8 @@ import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from './pa
  * @property {number} minTurnSeconds
  * @property {number} cooldownMs
  * @property {Record<EventName, EventConfig>} events
+ * @property {boolean} usageResetTimer Keep a background timer that plays the reset sounds when no
+ *   session is running.
  * @property {{ template: string }} tts
  * @property {Record<string, string>} modelPatterns Model family to the pattern that identifies it.
  */
@@ -52,6 +63,10 @@ export const EVENTS = Object.freeze([
   'question',
   'permission',
   'error',
+  'usage_5h_near',
+  'usage_5h_reset',
+  'usage_week_near',
+  'usage_week_reset',
 ]);
 
 /**
@@ -59,6 +74,18 @@ export const EVENTS = Object.freeze([
  * @type {readonly AgentEventName[]}
  */
 export const AGENT_EVENTS = Object.freeze(['agent_done', 'subagent_start', 'subagent_done']);
+
+/**
+ * Usage-limit events that sound when a window crosses one of its thresholds.
+ * @type {readonly UsageNearEventName[]}
+ */
+export const USAGE_NEAR_EVENTS = Object.freeze(['usage_5h_near', 'usage_week_near']);
+
+/**
+ * Usage-limit events that sound when a window resets.
+ * @type {readonly UsageResetEventName[]}
+ */
+export const USAGE_RESET_EVENTS = Object.freeze(['usage_5h_reset', 'usage_week_reset']);
 
 /** @type {Readonly<Record<EventName, string>>} */
 export const EVENT_LABELS = Object.freeze({
@@ -68,6 +95,10 @@ export const EVENT_LABELS = Object.freeze({
   question: 'has a question',
   permission: 'needs permission',
   error: 'hit an error',
+  usage_5h_near: 'is near the 5-hour limit',
+  usage_5h_reset: '5-hour limit reset',
+  usage_week_near: 'is near the weekly limit',
+  usage_week_reset: 'weekly limit reset',
 });
 
 /**
@@ -81,6 +112,10 @@ export const BUNDLED_SOUNDS = Object.freeze([
   'question',
   'permission',
   'error',
+  'usage-near',
+  'usage-reset',
+  'usage-week-near',
+  'usage-week-reset',
 ]);
 
 /** @type {Readonly<Config>} */
@@ -98,7 +133,12 @@ export const DEFAULTS = deepFreeze({
     question: { enabled: true, sound: 'default:question', volume: null },
     permission: { enabled: true, sound: 'default:permission', volume: null },
     error: { enabled: true, sound: 'default:error', volume: null },
+    usage_5h_near: { enabled: true, sound: 'default:usage-near', volume: null, thresholds: [80, 95] },
+    usage_5h_reset: { enabled: true, sound: 'default:usage-reset', volume: null, minPercent: 80 },
+    usage_week_near: { enabled: true, sound: 'default:usage-week-near', volume: null, thresholds: [80, 95] },
+    usage_week_reset: { enabled: true, sound: 'default:usage-week-reset', volume: null, minPercent: 80 },
   },
+  usageResetTimer: false,
   tts: { template: '{model} {event}' },
   modelPatterns: { opus: 'opus', sonnet: 'sonnet', haiku: 'haiku', fable: 'fable' },
 });
@@ -109,6 +149,9 @@ const AUDIO_EXT_RE = /\.(?:wav|mp3)$/i;
 const PATH_CHARS_RE = /[\\/:]/;
 const EVENT_KEYS = Object.freeze(['enabled', 'sound', 'volume']);
 const AGENT_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'byModel']);
+const USAGE_NEAR_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'thresholds']);
+const USAGE_RESET_EVENT_KEYS = Object.freeze([...EVENT_KEYS, 'minPercent']);
+const MAX_THRESHOLDS = 10;
 
 /**
  * Parse a sound spec string.
@@ -295,6 +338,22 @@ function isAgentEvent(event) {
 }
 
 /**
+ * @param {EventName} event
+ * @returns {event is UsageNearEventName}
+ */
+export function isUsageNearEvent(event) {
+  return /** @type {readonly string[]} */ (USAGE_NEAR_EVENTS).includes(event);
+}
+
+/**
+ * @param {EventName} event
+ * @returns {event is UsageResetEventName}
+ */
+export function isUsageResetEvent(event) {
+  return /** @type {readonly string[]} */ (USAGE_RESET_EVENTS).includes(event);
+}
+
+/**
  * Read one JSON config layer. Missing files are silently skipped.
  * @param {string} file
  * @returns {Record<string, unknown> | undefined}
@@ -355,6 +414,7 @@ function normalize(input) {
     minTurnSeconds: numberOr('minTurnSeconds', raw.minTurnSeconds, DEFAULTS.minTurnSeconds, toCount),
     cooldownMs: numberOr('cooldownMs', raw.cooldownMs, DEFAULTS.cooldownMs, toCount),
     events: normalizeEvents(raw.events, modelPatterns),
+    usageResetTimer: validOr('usageResetTimer', raw.usageResetTimer, DEFAULTS.usageResetTimer, isBoolean),
     tts: {
       template: validOr('tts.template', tts.template, DEFAULTS.tts.template, isNonEmptyString),
     },
@@ -376,7 +436,9 @@ function normalizeEvents(value, modelPatterns) {
     const def = DEFAULTS.events[event];
     const raw = objectOr(keyPath, src[event], def);
     const agent = isAgentEvent(event);
-    warnUnknown(keyPath, raw, agent ? AGENT_EVENT_KEYS : EVENT_KEYS);
+    const near = isUsageNearEvent(event);
+    const reset = isUsageResetEvent(event);
+    warnUnknown(keyPath, raw, eventKeys(event));
     /** @type {EventConfig} */
     const out = {
       enabled: validOr(`${keyPath}.enabled`, raw.enabled, def.enabled, isBoolean),
@@ -385,6 +447,12 @@ function normalizeEvents(value, modelPatterns) {
     };
     if (agent) {
       out.byModel = normalizeByModel(`${keyPath}.byModel`, raw.byModel, modelPatterns);
+    }
+    if (near) {
+      out.thresholds = normalizeThresholds(`${keyPath}.thresholds`, raw.thresholds, def.thresholds ?? []);
+    }
+    if (reset) {
+      out.minPercent = numberOr(`${keyPath}.minPercent`, raw.minPercent, def.minPercent ?? 0, clampPercent);
     }
     events[event] = out;
   }
@@ -411,6 +479,49 @@ function normalizeByModel(keyPath, value, modelPatterns) {
     }
   }
   return out;
+}
+
+/**
+ * The keys an event's config may have.
+ * @param {EventName} event
+ * @returns {readonly string[]}
+ */
+function eventKeys(event) {
+  if (isAgentEvent(event)) {
+    return AGENT_EVENT_KEYS;
+  }
+  if (isUsageNearEvent(event)) {
+    return USAGE_NEAR_EVENT_KEYS;
+  }
+  return isUsageResetEvent(event) ? USAGE_RESET_EVENT_KEYS : EVENT_KEYS;
+}
+
+/**
+ * Keep valid percentages (above 0, up to 100), deduplicated and ascending.
+ * @param {string} keyPath
+ * @param {unknown} value
+ * @param {readonly number[]} fallback
+ * @returns {number[]}
+ */
+function normalizeThresholds(keyPath, value, fallback) {
+  if (!Array.isArray(value)) {
+    warnReplaced(keyPath, value, fallback);
+    return [...fallback];
+  }
+  /** @type {Set<number>} */
+  const out = new Set();
+  for (const item of value) {
+    if (typeof item === 'number' && Number.isFinite(item) && item > 0 && item <= 100) {
+      out.add(item);
+    } else {
+      log('warn', `config: ignoring ${keyPath} entry ${preview(item)}: must be a number above 0 and up to 100`);
+    }
+  }
+  const sorted = [...out].sort((a, b) => a - b);
+  if (sorted.length > MAX_THRESHOLDS) {
+    log('warn', `config: ${keyPath} keeps only the first ${MAX_THRESHOLDS} thresholds`);
+  }
+  return sorted.slice(0, MAX_THRESHOLDS);
 }
 
 /**
@@ -606,6 +717,14 @@ function isSoundSpec(value) {
  */
 function clampUnit(value) {
   return Math.min(1, Math.max(0, value));
+}
+
+/**
+ * @param {number} value
+ * @returns {number}
+ */
+function clampPercent(value) {
+  return Math.min(100, Math.max(0, value));
 }
 
 /**
