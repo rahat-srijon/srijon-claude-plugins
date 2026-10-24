@@ -1,13 +1,13 @@
 {
-  "name": "claudio-notify",
-  "description": "Self-hosted marketplace for claudio-notify, audio notifications for Claude Code.",
+  "name": "srijon-claude-plugins",
+  "description": "Claude Code plugins by Md. Rahat Islam.",
   "owner": {
     "name": "Md. Rahat Islam"
   },
   "plugins": [
     {
       "name": "claudio-notify",
-      "source": "./",
+      "source": "./plugins/claudio-notify",
       "description": "Audio notifications for Claude Code: distinct, customizable sounds when tasks finish, subagents start or stop, Claude asks a question, needs permission, or you near a usage limit — per model.",
       "version": "0.2.0"
     }
