@@ -4,18 +4,22 @@ Audio notifications for Claude Code: distinct, customizable sounds when tasks fi
 
 Step away from the terminal and still hear when Claude finishes, asks you something, or needs permission. Each event has its own sound, and you can pick a different sound per model (Opus, Sonnet, Haiku and so on) so you know who is talking to you.
 
+claudio-notify is part of the [srijon-claude-plugins](../../README.md) marketplace.
+
 ## Install
 
 ```
-/plugin marketplace add rahat-srijon/claudio-notify
-/plugin install claudio-notify@claudio-notify
+/plugin marketplace add rahat-srijon/srijon-claude-plugins
+/plugin install claudio-notify@srijon-claude-plugins
 ```
 
 Or in one step (needs Claude Code 2.1.275 or later):
 
 ```
-/plugin install claudio-notify --marketplace rahat-srijon/claudio-notify
+/plugin install claudio-notify --marketplace rahat-srijon/srijon-claude-plugins
 ```
+
+Installed it from the old `claudio-notify` marketplace? See [moving from the old marketplace](../../README.md#moving-from-the-old-claudio-notify-marketplace).
 
 ### Requirements
 
@@ -193,13 +197,16 @@ Everything runs on your machine. claudio-notify makes no network requests, apart
 ## Development
 
 ```
-git clone https://github.com/rahat-srijon/claudio-notify
-cd claudio-notify
-claude --plugin-dir .
+git clone https://github.com/rahat-srijon/srijon-claude-plugins
+cd srijon-claude-plugins
+claude --plugin-dir plugins/claudio-notify
 ```
+
+Run these inside `plugins/claudio-notify`:
 
 - `npm run gen-sounds` regenerates the bundled sounds. The output is deterministic.
 - `npm test` runs the tests.
+- `claude plugin validate .` checks the plugin manifest.
 - Set `CLAUDIO_DATA_DIR` to a scratch directory to keep your real config and log untouched.
 
 ## License
