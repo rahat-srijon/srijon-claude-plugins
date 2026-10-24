@@ -163,9 +163,17 @@ describe('hook reminders', () => {
 
   it('clears the reminder on the next hook in the session', async () => {
     const { deps } = fakes();
+    await handle(input('StopFailure'), deps);
+    assert.equal(readAttention(dataDir, 's1')?.event, 'error');
+    await handle(input('UserPromptSubmit'), deps);
+    assert.equal(readAttention(dataDir, 's1'), null);
+  });
+
+  it('plays a permission prompt once, without a reminder', async () => {
+    const { played, spawned, deps } = fakes();
     await handle(input('Notification', { notification_type: 'permission_prompt' }), deps);
-    assert.equal(readAttention(dataDir, 's1')?.event, 'permission');
-    await handle(input('Stop'), deps);
+    assert.deepEqual(played, ['permission.wav']);
+    assert.deepEqual(spawned, []);
     assert.equal(readAttention(dataDir, 's1'), null);
   });
 

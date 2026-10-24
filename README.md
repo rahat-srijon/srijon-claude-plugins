@@ -43,7 +43,7 @@ Some details:
 - The "finished" sound only plays when the turn took at least `minTurnSeconds` (default 15 seconds), so quick answers stay quiet.
 - Subagents that finish together are merged into one sound. A sound for the same event won't play again within `cooldownMs` (default 1500 ms).
 - "Subagent started" and "started working" are off by default. Turn them on in the settings page or the config file.
-- "Has a question", "needs permission" and "hit an error" repeat every 30 seconds until you respond (`repeatMs`, 0 turns it off). A reminder stops at the next sign of activity in the session: any hook claudio-notify listens to, or a new message in the session's transcript. After you approve a permission, that message only appears when the tool finishes, so a long-running command can repeat a few more times. Reminders also stop after an hour.
+- "Has a question" and "hit an error" repeat every 30 seconds until you respond (`repeatMs`, 0 turns it off). A reminder stops at the next sign of activity in the session: any hook claudio-notify listens to, or a new message in the session's transcript. Reminders also stop after an hour. "Needs permission" plays once, because Claude Code gives no signal when you approve a permission.
 
 ## Usage-limit sounds
 
@@ -160,7 +160,7 @@ If a sound can't be found or played, claudio-notify falls back to the event's bu
 | `events.<event>.sound` | `default:<id>` | Sound spec for the event |
 | `events.<event>.volume` | `null` | Volume for this event, or `null` to use the global one |
 | `events.<event>.byModel` | `{}` | Agent events only: family to sound spec |
-| `events.<event>.repeatMs` | `30000` | `question`, `permission` and `error` only: replay every this many ms until you respond. `0` turns it off; at least `1000`. |
+| `events.<event>.repeatMs` | `30000` | `question` and `error` only: replay every this many ms until you respond. `0` turns it off; at least `1000`. |
 | `events.<event>.repeatWhileWorkingMs` | `0` | `usage_5h_near` and `usage_week_near` only: once a threshold is hit, replay every this many ms while Claude works. `0` turns it off. |
 | `events.<event>.remindOnPrompt` | `false` | `usage_5h_near` and `usage_week_near` only: once a threshold is hit, replay on every prompt |
 | `events.<event>.thresholds` | `[80, 95]` | `usage_5h_near` and `usage_week_near` only: usage percentages that each play once per window |

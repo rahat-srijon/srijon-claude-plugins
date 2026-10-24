@@ -9,7 +9,7 @@ import { readJsonObject, withMutex, writeJsonAtomic } from './state.js';
 /** @typedef {import('./usage.js').WindowName} WindowName */
 
 /**
- * A question, permission or error sound that repeats until it is dealt with.
+ * A question or error sound that repeats until it is dealt with.
  * One per session: a newer one replaces the older.
  * @typedef {object} AttentionReminder
  * @property {string} id Lets the repeater notice that it was replaced.

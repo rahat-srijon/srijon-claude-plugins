@@ -713,9 +713,10 @@ describe('loadConfig: phase 2 options', () => {
     assert.equal(config.events.agent_start.enabled, false);
     assert.equal(config.events.agent_start.sound, 'default:start');
     assert.deepEqual(config.events.agent_start.byModel, {});
-    for (const event of /** @type {const} */ (['question', 'permission', 'error'])) {
+    for (const event of /** @type {const} */ (['question', 'error'])) {
       assert.equal(config.events[event].repeatMs, 30000);
     }
+    assert.equal(config.events.permission.repeatMs, undefined);
     assert.equal(config.events.agent_done.repeatMs, undefined);
     assert.equal(config.events.usage_5h_near.repeatWhileWorkingMs, 0);
     assert.equal(config.events.usage_week_near.remindOnPrompt, false);
@@ -726,23 +727,24 @@ describe('loadConfig: phase 2 options', () => {
     writeGlobal({
       events: {
         question: { repeatMs: 0 },
-        permission: { repeatMs: 250 },
-        error: { repeatMs: -5 },
+        error: { repeatMs: 250 },
         usage_5h_near: { repeatWhileWorkingMs: 1500.4, remindOnPrompt: 'yes' },
       },
     });
     const config = load();
     assert.equal(config.events.question.repeatMs, 0);
-    assert.equal(config.events.permission.repeatMs, 1000);
-    assert.equal(config.events.error.repeatMs, 0);
+    assert.equal(config.events.error.repeatMs, 1000);
     assert.equal(config.events.usage_5h_near.repeatWhileWorkingMs, 1500);
     assert.equal(config.events.usage_5h_near.remindOnPrompt, false);
   });
 
   it('drops repeat keys on events that do not support them', () => {
-    writeGlobal({ events: { agent_done: { repeatMs: 5000 }, question: { remindOnPrompt: true } } });
+    writeGlobal({
+      events: { agent_done: { repeatMs: 5000 }, permission: { repeatMs: 5000 }, question: { remindOnPrompt: true } },
+    });
     const config = load();
     assert.equal(config.events.agent_done.repeatMs, undefined);
+    assert.equal(config.events.permission.repeatMs, undefined);
     assert.equal(config.events.question.remindOnPrompt, undefined);
   });
 });

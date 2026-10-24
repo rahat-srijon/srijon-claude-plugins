@@ -1,6 +1,6 @@
 // @ts-check
 // Repeats a sound in a detached process until it is no longer needed.
-//   remind.js attention <sessionId> <id>  question, permission or error, until dealt with
+//   remind.js attention <sessionId> <id>  question or error, until dealt with
 //   remind.js usage <window>              a usage "near" sound, while any session's turn runs
 import fs from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -32,7 +32,7 @@ export const MAX_ATTENTION_MS = 60 * 60 * 1000;
 export const MAX_TURN_MS = 6 * 60 * 60 * 1000;
 
 /**
- * Replay a question, permission or error sound until a hook in the session
+ * Replay a question or error sound until a hook in the session
  * clears the reminder, a message appears in the session's transcripts, the
  * reminder is replaced or turned off, or MAX_ATTENTION_MS passes.
  * @param {string} sessionId
