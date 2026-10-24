@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Usage-limit sounds for Pro and Max plans: the 5-hour and weekly limits nearing a threshold (80% and 95% by default) and resetting.
+- `/claudio-notify:setup-usage`, which shows and, after you confirm, applies a status line shim that reads the limit data and keeps your existing status line output.
+- `/claudio-notify:teardown-usage`, which restores the previous status line.
+- Per-event `thresholds` for the "near" events and `minPercent` for the reset events.
+- An opt-in reset timer (`usageResetTimer`) that plays reset sounds when no session is running.
+- Four bundled sounds for the usage events, and a "Usage limits" section in the settings page.
+
 ## [0.1.0] - 2026-10-23
 
 ### Added
@@ -22,4 +33,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Playback on Windows (PowerShell), macOS (`afplay`) and Linux (`paplay`, `pw-play`, `ffplay`, `aplay`).
 - A rotating log file that never writes to the conversation.
 
+[Unreleased]: https://github.com/rahat-srijon/claudio-notify/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/rahat-srijon/claudio-notify/releases/tag/v0.1.0
