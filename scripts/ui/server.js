@@ -10,6 +10,8 @@ import {
   DEFAULTS,
   EVENTS,
   EVENT_LABELS,
+  isUsageNearEvent,
+  isUsageResetEvent,
   loadConfig,
   parseSoundSpec,
   resolveSound,
@@ -20,6 +22,7 @@ import { log } from '../lib/log.js';
 import { dataDir as defaultDataDir, pluginRoot as defaultPluginRoot } from '../lib/paths.js';
 import { backend, play, speak } from '../lib/player/index.js';
 import { ttsBackend } from '../lib/player/tts.js';
+import { readSetupRecord } from '../lib/statusline.js';
 
 /** @typedef {import('../lib/config.js').Config} Config */
 /** @typedef {import('../lib/config.js').EventName} EventName */
@@ -254,7 +257,9 @@ export async function startServer(options = {}) {
           id,
           label: EVENT_LABELS[id],
           agent: /** @type {readonly string[]} */ (AGENT_EVENTS).includes(id),
+          usage: usageKind(id),
         })),
+        usageSetup: readSetupRecord(dataDir) !== null,
         families: Object.keys(config.modelPatterns),
         defaults: DEFAULTS,
         backend: safeCall(backend),
@@ -540,6 +545,17 @@ function readBody(req, limit) {
     req.on('end', onEnd);
     req.on('error', onError);
   });
+}
+
+/**
+ * @param {EventName} event
+ * @returns {'near' | 'reset' | null}
+ */
+function usageKind(event) {
+  if (isUsageNearEvent(event)) {
+    return 'near';
+  }
+  return isUsageResetEvent(event) ? 'reset' : null;
 }
 
 /**
