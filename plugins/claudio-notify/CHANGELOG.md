@@ -4,13 +4,6 @@ All notable changes to claudio-notify are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Changed
-
-- claudio-notify now lives in the [srijon-claude-plugins](https://github.com/rahat-srijon/srijon-claude-plugins) marketplace, under `plugins/claudio-notify`. Install it as `claudio-notify@srijon-claude-plugins`. The plugin id changes, and with it the data directory, so existing settings need to be copied over (see the marketplace README).
-- Releases are tagged `claudio-notify-v<version>`.
-
 ## [0.2.0] - 2026-10-24
 
 ### Added
@@ -43,6 +36,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Playback on Windows (PowerShell), macOS (`afplay`) and Linux (`paplay`, `pw-play`, `ffplay`, `aplay`).
 - A rotating log file that never writes to the conversation.
 
-[Unreleased]: https://github.com/rahat-srijon/srijon-claude-plugins/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/rahat-srijon/srijon-claude-plugins/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rahat-srijon/srijon-claude-plugins/releases/tag/v0.1.0
