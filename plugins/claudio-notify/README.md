@@ -19,8 +19,6 @@ Or in one step (needs Claude Code 2.1.275 or later):
 /plugin install claudio-notify --marketplace rahat-srijon/srijon-claude-plugins
 ```
 
-Installed it from the old `claudio-notify` marketplace? See [moving from the old marketplace](../../README.md#moving-from-the-old-claudio-notify-marketplace).
-
 ### Requirements
 
 - Node.js 18 or later on your PATH.
