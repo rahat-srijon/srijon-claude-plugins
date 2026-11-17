@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultSettings, normalizeSettings } from '../hooks/lib/settings.ts';
+import { dataDirFor, defaultSettings, normalizeSettings, parseSettingsText } from '../hooks/lib/settings.ts';
 
 test('defaults match the brief', () => {
   assert.deepEqual(defaultSettings(), {
@@ -11,6 +11,7 @@ test('defaults match the brief', () => {
     fields: { stepCount: true, percentage: false, stepLabel: true, elapsed: true, subagents: true },
     animation: 'smooth',
     showOnVscodeStatus: true,
+    ai: { explainStop: false, askForTaskList: false },
   });
 });
 
@@ -73,4 +74,25 @@ test('barWidth is rounded and clamped to 10..40; non-finite falls back', () => {
 test('the result survives a JSON round trip', () => {
   const s = normalizeSettings({ barStyle: 'dots', barWidth: 25 });
   assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(s))), s);
+});
+
+test('ai options default to off and fall back field by field', () => {
+  assert.deepEqual(normalizeSettings({}).ai, { explainStop: false, askForTaskList: false });
+  assert.deepEqual(normalizeSettings({ ai: { explainStop: true, askForTaskList: 'yes' } }).ai, { explainStop: true, askForTaskList: false });
+  assert.deepEqual(normalizeSettings({ ai: { askForTaskList: true } }).ai, { explainStop: false, askForTaskList: true });
+  for (const ai of ['x', 5, null, [true], undefined]) assert.deepEqual(normalizeSettings({ ai }).ai, defaultSettings().ai);
+});
+
+test('dataDirFor prefers the override, then home, then nothing', () => {
+  assert.equal(dataDirFor('D:\\tmp\\pm\\', 'C:\\Users\\a'), 'D:\\tmp\\pm');
+  assert.equal(dataDirFor(undefined, 'C:\\Users\\a\\'), 'C:\\Users\\a/.claude/plugins/data/pace-maker');
+  assert.equal(dataDirFor('', '/home/a'), '/home/a/.claude/plugins/data/pace-maker');
+  assert.equal(dataDirFor(undefined, undefined), undefined);
+  assert.equal(dataDirFor(undefined, ''), undefined);
+});
+
+test('parseSettingsText never throws and falls back to the defaults', () => {
+  for (const text of ['', '{', 'null', '[]', 'nope', undefined, null, 5]) assert.deepEqual(parseSettingsText(text), defaultSettings());
+  assert.equal(parseSettingsText('{"enabled":false,"ai":{"explainStop":true}}').enabled, false);
+  assert.equal(parseSettingsText('{"ai":{"explainStop":true}}').ai.explainStop, true);
 });

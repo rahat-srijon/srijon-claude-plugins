@@ -12,6 +12,12 @@ export type Fields = {
   subagents: boolean;
 };
 
+/** The opt-in AI features (both off by default; the AI milestone reads these). */
+export type AiSettings = {
+  explainStop: boolean;
+  askForTaskList: boolean;
+};
+
 export type Settings = {
   enabled: boolean;
   display: Display;
@@ -20,6 +26,7 @@ export type Settings = {
   fields: Fields;
   animation: Animation;
   showOnVscodeStatus: boolean;
+  ai: AiSettings;
 };
 
 export const DISPLAYS: readonly Display[] = ['bar', 'text'];
@@ -38,6 +45,7 @@ export function defaultSettings(): Settings {
     fields: { stepCount: true, percentage: false, stepLabel: true, elapsed: true, subagents: true },
     animation: 'smooth',
     showOnVscodeStatus: true,
+    ai: { explainStop: false, askForTaskList: false },
   };
 }
 
@@ -52,6 +60,7 @@ export function normalizeSettings(raw: unknown): Settings {
   try {
     if (!isRec(raw)) return d;
     const f = isRec(raw.fields) ? raw.fields : {};
+    const a = isRec(raw.ai) ? raw.ai : {};
     const w = raw.barWidth;
     const width = typeof w === 'number' && Number.isFinite(w) ? Math.min(BAR_WIDTH_MAX, Math.max(BAR_WIDTH_MIN, Math.round(w))) : d.barWidth;
     return {
@@ -68,8 +77,36 @@ export function normalizeSettings(raw: unknown): Settings {
       },
       animation: pick(raw.animation, ANIMATIONS, d.animation),
       showOnVscodeStatus: bool(raw.showOnVscodeStatus, d.showOnVscodeStatus),
+      ai: {
+        explainStop: bool(a.explainStop, d.ai.explainStop),
+        askForTaskList: bool(a.askForTaskList, d.ai.askForTaskList),
+      },
     };
   } catch {
     return d;
+  }
+}
+
+/** The global settings file: `<data dir>/config.json`. scripts/lib/config.js resolves the same place with Node's os.homedir(). */
+export const CONFIG_FILE = 'config.json';
+
+const trimEnd = (p: string): string => p.replace(/[\\/]+$/, '');
+
+/**
+ * The settings directory: `PACE_MAKER_DATA_DIR` when set, else `<home>/.claude/plugins/data/pace-maker`.
+ * `home` is USERPROFILE or HOME, what os.homedir() reads. Undefined when neither is known (the defaults are used then).
+ */
+export function dataDirFor(override: string | undefined, home: string | undefined): string | undefined {
+  if (override !== undefined && override !== '') return trimEnd(override);
+  if (home === undefined || home === '') return undefined;
+  return `${trimEnd(home)}/.claude/plugins/data/pace-maker`;
+}
+
+/** Reads settings from the text of config.json. Never throws: bad JSON or any other trouble gives the defaults. */
+export function parseSettingsText(text: unknown): Settings {
+  try {
+    return normalizeSettings(JSON.parse(String(text)));
+  } catch {
+    return defaultSettings();
   }
 }

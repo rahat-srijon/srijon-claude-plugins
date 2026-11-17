@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>pace-maker settings</title>
+<style>
+  :root {
+    --bg: #f3f4f7; --surface: #ffffff; --border: #dfe2e8; --text: #1c2030; --muted: #5d6475;
+    --accent: #4257d6; --accent-hover: #3446b8; --on-accent: #ffffff; --soft: #e6e9fb;
+    --ai: #8a5a00; --ai-soft: #fdf1d8; --danger: #b3261e; --ok: #1d7a46; --track: #c5cad5;
+    --radius: 12px; --font: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141b; --surface: #1b1e27; --border: #2f3442; --text: #e7e9f0; --muted: #9aa1b2;
+      --accent: #8b9cff; --accent-hover: #a5b2ff; --on-accent: #10131f; --soft: #272d4d;
+      --ai: #f2c063; --ai-soft: #3a2e14; --danger: #ff8a80; --ok: #6fd39b; --track: #454b5c;
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  h2 { font-size: 1rem; margin: 0; padding: 0; }
+  p { margin: 0; }
+  .muted { color: var(--muted); }
+  .lead { margin-bottom: 16px; }
+  fieldset { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); margin: 0 0 16px; padding: 14px 16px 16px; min-width: 0; }
+  legend { font-weight: 600; padding: 0 6px; margin-left: -6px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 10px; }
+  .row:first-of-type { margin-top: 0; }
+  label.check, label.radio { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+  input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+  select, input[type="number"], input[type="range"] { font: inherit; color: var(--text); }
+  select, input[type="number"] { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+  input[type="range"] { flex: 1 1 140px; min-width: 0; accent-color: var(--accent); }
+  .field-label { font-weight: 500; }
+  .hint { font-size: 0.875rem; color: var(--muted); margin-top: 4px; }
+  .badge { display: inline-block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em; padding: 1px 8px; border-radius: 999px; background: var(--ai-soft); color: var(--ai); margin-left: 6px; vertical-align: 1px; }
+  .ai { margin-top: 14px; }
+  .ai:first-of-type { margin-top: 0; }
+  .preview { font-family: var(--mono); background: var(--soft); border-radius: 8px; padding: 8px 10px; overflow-wrap: anywhere; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  button { font: inherit; border-radius: 8px; padding: 8px 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button.primary:hover { background: var(--accent-hover); }
+  button:disabled { opacity: 0.55; cursor: default; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #status { min-height: 1.5em; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--danger); }
+  code { font-family: var(--mono); font-size: 0.9em; overflow-wrap: anywhere; }
+  .path { margin-top: 16px; font-size: 0.875rem; color: var(--muted); }
+  @media (max-width: 420px) { fieldset { padding: 12px; } button { flex: 1 1 auto; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>pace-maker settings</h1>
+  <p class="muted lead">These are the global settings. Turning pace-maker on or off for one conversation is done in that conversation with the <code>/pace</code> command (<code>/pace on</code>, <code>/pace off</code>, <code>/pace pause</code>), not here.</p>
+
+  <form id="form" novalidate>
+    <fieldset>
+      <legend>General</legend>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="enabled"><span><span class="field-label">Enabled globally</span><br><span class="hint">Off hides the band, the VS Code status and the spinner text in every conversation.</span></span></label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="showOnVscodeStatus"><span><span class="field-label">Show on the VS Code status line</span><br><span class="hint">VS Code has no band, so progress rides on the spinner and the status line.</span></span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Display</legend>
+      <div class="row" role="radiogroup" aria-label="Display">
+        <label class="radio"><input type="radio" name="display" value="bar"><span>Bar and label</span></label>
+        <label class="radio"><input type="radio" name="display" value="text"><span>Text only</span></label>
+      </div>
+      <div class="row">
+        <label class="field-label" for="barStyle">Bar style</label>
+        <select id="barStyle">
+          <option value="native">Native progress bar</option>
+          <option value="blocks">Blocks &#9608;&#9617;</option>
+          <option value="thin">Thin &#9473;&#9472;</option>
+          <option value="dots">Dots &#9679;&#9675;</option>
+          <option value="ascii">ASCII [###--]</option>
+        </select>
+      </div>
+      <div class="row">
+        <label class="field-label" for="barWidth">Bar width</label>
+        <input type="range" id="barWidth" min="10" max="40" step="1" aria-describedby="widthHint">
+        <input type="number" id="barWidthNum" min="10" max="40" step="1" aria-label="Bar width in characters" style="width:5em">
+      </div>
+      <p class="hint" id="widthHint">10 to 40 characters. The native bar sizes itself; width applies to the character styles.</p>
+      <div class="row"><div class="preview" id="preview" aria-label="Preview" role="img"></div></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Fields beside the bar</legend>
+      <div class="row"><label class="check"><input type="checkbox" id="f-stepCount"><span>Step count (3/5)</span></label></div>
+      <div class="row"><label class="check"><input type="checkbox" id="f-percentage"><span>Percentage</span></label></div>
+      <div class="row"><label class="check"><input type="checkbox" id="f-stepLabel"><span>Step label</span></label></div>
+      <div class="row"><label class="check"><input type="checkbox" id="f-elapsed"><span>Elapsed time</span></label></div>
+      <div class="row"><label class="check"><input type="checkbox" id="f-subagents"><span>Subagent count</span></label></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Animation</legend>
+      <div class="row" role="radiogroup" aria-label="Animation">
+        <label class="radio"><input type="radio" name="animation" value="smooth"><span>Smooth</span></label>
+        <label class="radio"><input type="radio" name="animation" value="instant"><span>Instant</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>AI features</legend>
+      <p class="hint" style="margin:0 0 12px">Both are off by default. pace-maker uses no model tokens unless you turn one on.</p>
+      <div class="ai">
+        <label class="check"><input type="checkbox" id="ai-explainStop"><span><span class="field-label">Explain why it stopped</span><span class="badge">Uses AI</span><br><span class="hint">When a turn ends with tasks left and no event explains it, a small-model call reads the last answer and writes a reason of 8 words or fewer, about a few hundred tokens per stop.</span></span></label>
+      </div>
+      <div class="ai">
+        <label class="check"><input type="checkbox" id="ai-askForTaskList"><span><span class="field-label">Ask Claude to keep a task list</span><span class="badge">Uses AI</span><br><span class="hint">Adds one line to the system prompt, about 20-30 tokens per session.</span></span></label>
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="primary" id="save">Save</button>
+      <button type="button" id="reset">Reset to defaults</button>
+      <button type="button" id="done">Done</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+  </form>
+  <p class="path">Config file: <code id="path">-</code></p>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const token = new URLSearchParams(location.search).get('token') || '';
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+  const FIELDS = ['stepCount', 'percentage', 'stepLabel', 'elapsed', 'subagents'];
+  const AI = ['explainStop', 'askForTaskList'];
+  let defaults = null;
+  let dirty = false;
+
+  const say = (msg, kind) => { const s = $('status'); s.textContent = msg; s.className = kind || ''; };
+
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: Object.assign({ 'x-pace-token': token }, body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* not json */ }
+    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+    return data;
+  }
+
+  const radio = (name) => { const el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : ''; };
+  const setRadio = (name, value) => { document.querySelectorAll('input[name="' + name + '"]').forEach((el) => { el.checked = el.value === value; }); };
+
+  function show(c) {
+    $('enabled').checked = c.enabled;
+    $('showOnVscodeStatus').checked = c.showOnVscodeStatus;
+    setRadio('display', c.display);
+    setRadio('animation', c.animation);
+    $('barStyle').value = c.barStyle;
+    $('barWidth').value = $('barWidthNum').value = c.barWidth;
+    FIELDS.forEach((k) => { $('f-' + k).checked = c.fields[k]; });
+    AI.forEach((k) => { $('ai-' + k).checked = c.ai[k]; });
+    preview();
+  }
+
+  function read() {
+    const fields = {}; FIELDS.forEach((k) => { fields[k] = $('f-' + k).checked; });
+    const ai = {}; AI.forEach((k) => { ai[k] = $('ai-' + k).checked; });
+    return {
+      enabled: $('enabled').checked,
+      display: radio('display'),
+      barStyle: $('barStyle').value,
+      barWidth: Number($('barWidthNum').value),
+      fields, animation: radio('animation'),
+      showOnVscodeStatus: $('showOnVscodeStatus').checked, ai,
+    };
+  }
+
+  function preview() {
+    const c = read();
+    const n = Math.min(40, Math.max(10, Math.round(c.barWidth) || 20));
+    const done = Math.round(n * 0.6);
+    const glyphs = { blocks: ['█', '░'], thin: ['━', '─'], dots: ['●', '○'] };
+    let bar = '';
+    if (c.display === 'bar') {
+      if (c.barStyle === 'native') bar = '[native bar] ';
+      else if (c.barStyle === 'ascii') bar = '[' + '#'.repeat(done) + '-'.repeat(n - done) + '] ';
+      else bar = glyphs[c.barStyle][0].repeat(done) + glyphs[c.barStyle][1].repeat(n - done) + ' ';
+    }
+    const parts = [];
+    if (c.fields.stepCount) parts.push('3/5');
+    if (c.fields.stepLabel) parts.push('Running tests');
+    if (c.fields.percentage) parts.push('60%');
+    if (c.fields.elapsed) parts.push('1m');
+    if (c.fields.subagents) parts.push('2 agents');
+    $('preview').textContent = bar + (parts.join(' · ') || 'Working');
+  }
+
+  $('barWidth').addEventListener('input', () => { $('barWidthNum').value = $('barWidth').value; });
+  $('barWidthNum').addEventListener('input', () => { $('barWidth').value = $('barWidthNum').value; });
+  $('form').addEventListener('input', () => { dirty = true; preview(); say(''); });
+
+  $('form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const c = read();
+    if (!Number.isInteger(c.barWidth) || c.barWidth < 10 || c.barWidth > 40) {
+      say('Bar width must be a whole number from 10 to 40.', 'err');
+      $('barWidthNum').focus();
+      return;
+    }
+    $('save').disabled = true;
+    try {
+      const data = await api('PUT', '/api/config', c);
+      show(data.config); dirty = false;
+      say('Saved. It applies at the start of the next turn.', 'ok');
+    } catch (e) { say(e.message, 'err'); } finally { $('save').disabled = false; }
+  });
+
+  $('reset').addEventListener('click', () => {
+    if (defaults) { show(defaults); dirty = true; say('Defaults filled in. Press Save to keep them.'); }
+  });
+
+  $('done').addEventListener('click', async () => {
+    if (dirty && !confirm('You have unsaved changes. Close anyway?')) return;
+    try { await api('POST', '/api/close', {}); } catch (e) { /* already closed */ }
+    document.querySelectorAll('input,select,button').forEach((el) => { el.disabled = true; });
+    say('The settings page has stopped. You can close this tab.');
+  });
+
+  (async () => {
+    try {
+      const data = await api('GET', '/api/config');
+      defaults = data.defaults;
+      $('path').textContent = data.path;
+      show(data.config);
+    } catch (e) {
+      say('Could not load the settings: ' + e.message + ' Open the page again with /pace config.', 'err');
+      document.querySelectorAll('input,select,button').forEach((el) => { el.disabled = true; });
+    }
+  })();
+})();
+</script>
+</body>
+</html>
