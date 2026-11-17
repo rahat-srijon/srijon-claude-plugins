@@ -1,5 +1,5 @@
 // The $.state contract. A contract file must be self-contained, so these shapes repeat the ones in
-// hooks/lib/{progress,state,background}.ts; the type-check of register.ts fails if they drift apart.
+// hooks/lib/{progress,state,background}.ts; the type-check of register.tsx fails if they drift apart.
 declare module 'claude-code' {
   interface PluginState {
     'pace-maker': {

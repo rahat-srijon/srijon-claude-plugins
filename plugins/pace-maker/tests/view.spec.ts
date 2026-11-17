@@ -77,7 +77,7 @@ test('blocked: error, denied and dependency', () => {
     { tool: 'TaskUpdate', input: { taskId: '2', addBlockedBy: ['1'] } },
   ].reduce(applyToolEvent, emptyModel());
   assert.deepEqual(view(dep, st({ kind: 'turnStart' }, end('stopped'))), {
-    kind: 'blocked', why: 'dependency', detail: 'second', done: 0, total: 2,
+    kind: 'blocked', why: 'dependency', count: 1, detail: 'second', done: 0, total: 2,
   });
 });
 
