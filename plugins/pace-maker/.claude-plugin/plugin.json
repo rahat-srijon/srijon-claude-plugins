@@ -14,5 +14,6 @@
     "status",
     "mod",
     "productivity"
-  ]
+  ],
+  "types": "./types/index.d.ts"
 }

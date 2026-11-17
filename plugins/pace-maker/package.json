@@ -19,6 +19,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test \"tests/*.test.ts\""
+    "test": "node --test \"tests/*.spec.ts\"",
+    "test:engine": "claude plugin test ."
   }
 }
