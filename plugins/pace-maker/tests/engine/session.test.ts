@@ -114,6 +114,6 @@ test('/pace registers once and off, on, pause and resume change the session atom
   expect(state.last('session').pause).toBeNull()
   const usage = (await run('')).text as string
   expect(usage).toMatch(/Usage/)
-  expect((await run('config')).text).toMatch(/later/)
+  expect(usage).toMatch(/config/)
   expect(usage.includes('\n')).toBe(false)
 })

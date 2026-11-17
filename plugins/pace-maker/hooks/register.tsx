@@ -7,7 +7,7 @@ import { applyTaskList, applyToolEvent, emptyModel, isComplete, type ToolEvent }
 import { applyEvent, emptyState, type StateEvent } from './lib/state.ts';
 import { deriveState, type View } from './lib/view.ts';
 import { easeValue, formatView, type Formatted } from './lib/format.ts';
-import { defaultSettings, type Settings } from './lib/settings.ts';
+import { CONFIG_FILE, dataDirFor, defaultSettings, parseSettingsText, type Settings } from './lib/settings.ts';
 
 // The per-conversation state lives in $.state (a hot reload keeps it); the engine's scan needs the atoms spelled in this file.
 const progress = atom({ plugin: 'pace-maker', key: 'progress' } as const, emptyModel(), { shape: 'progress-1' });
@@ -35,9 +35,44 @@ let notified = false;
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-/** The settings seam: the settings milestone replaces this body with the stored settings (cached, no I/O per render). */
+// The global settings, cached: render hooks call getSettings() on every draw, so it never does I/O. The file is read at
+// session.start, at each main-loop turn.start and on every /pace command (loadSettings), never in tool.call or a render.
+let cached: Settings = defaultSettings();
+
 export function getSettings(): Settings {
-  return defaultSettings();
+  return cached;
+}
+
+/** Reads <data dir>/config.json into the cache (defaults on any trouble) and redraws when something changed. Never throws. */
+async function loadSettings($: Dollar): Promise<void> {
+  let next = defaultSettings();
+  try {
+    const override = await $.env.get('PACE_MAKER_DATA_DIR');
+    const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'));
+    const dir = dataDirFor(override, home);
+    if (dir !== undefined) next = parseSettingsText(await $.fs.read(`${dir}/${CONFIG_FILE}`));
+  } catch {
+    next = defaultSettings();
+  }
+  try {
+    if (JSON.stringify(next) === JSON.stringify(cached)) return;
+    cached = next;
+    $.ui.invalidate('ui.render');
+    poke($);
+  } catch { /* ignore */ }
+}
+
+/** /pace config: starts the settings page through the Node launcher and answers with its URL in one line. */
+async function openSettingsPage($: Dollar): Promise<string> {
+  try {
+    const ran = await $.process.run(['node', `${$.plugin.root}/scripts/cli.js`, 'config'], { timeoutMs: 20_000 });
+    const url = /https?:\/\/\S+/.exec(ran.stdout)?.[0];
+    if (ran.exitCode === 0 && url !== undefined) return `Settings page: ${url}`;
+    const why = (ran.stderr.split('\n').find((l) => l.trim() !== '') ?? '').replace(/^pace-maker:\s*/, '').trim();
+    return `Could not open the settings page${why === '' ? '.' : `: ${clip(why, 80)}`}`;
+  } catch {
+    return 'Could not open the settings page: Node.js was not found or would not start.';
+  }
 }
 
 // ---- Drawing ---------------------------------------------------------------------------------------------------
@@ -339,6 +374,7 @@ export const register: Register = (on) => {
   on('turn.start', async ($, e, next) => {
     const ran = await next(e);
     if (e.agentId !== undefined) return ran;
+    await loadSettings($);
     try {
       await setState($, { kind: 'turnStart' }, await $.clock.now());
     } catch { /* ignore */ }
@@ -392,6 +428,7 @@ export const register: Register = (on) => {
 
   on('session.start', async ($, e, next) => {
     const ran = await next(e);
+    await loadSettings($);
     try {
       await $.command.register({
         name: 'pace',
@@ -413,6 +450,7 @@ export const register: Register = (on) => {
   // /pace: answered here with one short line (the model reads a plugin command's text on its next request).
   on('command.run', { command: 'pace' }, async ($, e) => {
     const [sub = '', ...rest] = e.args.trim().split(/\s+/);
+    await loadSettings($); // a page save applies at the next /pace command at the latest, or at the next turn
     switch (sub.toLowerCase()) {
       case 'off':
         await setState($, { kind: 'setDisabled', value: true });
@@ -430,9 +468,9 @@ export const register: Register = (on) => {
         await setState($, { kind: 'resume' });
         return { text: 'Resumed.' };
       case 'config':
-        return { text: 'The settings page arrives in a later version.' };
+        return { text: await openSettingsPage($) };
       default:
-        return { text: 'Usage: /pace on|off|pause <reason>|resume (config comes later).' };
+        return { text: 'Usage: /pace on|off|pause <reason>|resume|config' };
     }
   });
 };
