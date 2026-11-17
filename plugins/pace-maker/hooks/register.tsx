@@ -7,11 +7,12 @@ import { applyTaskList, applyToolEvent, emptyModel, isComplete, type ToolEvent }
 import { applyEvent, emptyState, type StateEvent } from './lib/state.ts';
 import { deriveState, type View } from './lib/view.ts';
 import { easeValue, formatView, type Formatted } from './lib/format.ts';
+import { EXPLAIN_REQUEST, TASK_LIST_LINE, TASK_LIST_SECTION_ID, buildExplainPrompt, clampReason, shouldAskForTaskList, shouldExplain } from './lib/explain.ts';
 import { CONFIG_FILE, dataDirFor, defaultSettings, parseSettingsText, type Settings } from './lib/settings.ts';
 
 // The per-conversation state lives in $.state (a hot reload keeps it); the engine's scan needs the atoms spelled in this file.
 const progress = atom({ plugin: 'pace-maker', key: 'progress' } as const, emptyModel(), { shape: 'progress-1' });
-const session = atom({ plugin: 'pace-maker', key: 'session' } as const, emptyState(), { shape: 'state-1' });
+const session = atom({ plugin: 'pace-maker', key: 'session' } as const, emptyState(), { shape: 'state-2' });
 const bg = atom({ plugin: 'pace-maker', key: 'bg' } as const, emptyBackground(), { shape: 'bg-1' });
 
 type Rec = Record<string, unknown>;
@@ -193,6 +194,38 @@ async function setState($: Dollar, event: StateEvent, now?: number): Promise<voi
   await update($, session, (s) => applyEvent(s, event, at));
   poke($);
 }
+// ---- Opt-in AI: the stop reason (off by default; the only model call this plugin makes) ----------------------------
+// At most one in flight. A new turn or the session ending aborts it, and a reply that arrives after that is dropped.
+let explaining: { id: number; abort: AbortController } | null = null;
+let explainId = 0;
+
+function cancelExplain(): void {
+  const cur = explaining;
+  explaining = null;
+  try {
+    cur?.abort.abort();
+  } catch { /* ignore */ }
+}
+
+/** One small-model call for an unexplained stop. Fire and forget: it never delays or breaks the turn; every error is swallowed. */
+async function explainStop($: Dollar, answer: string): Promise<void> {
+  cancelExplain();
+  const mine = { id: ++explainId, abort: new AbortController() };
+  explaining = mine;
+  try {
+    const r = await $.model.complete({ ...EXPLAIN_REQUEST, prompt: buildExplainPrompt(answer) }, { signal: mine.abort.signal });
+    if (explaining !== mine || mine.abort.signal.aborted || !r.isAnswered) return;
+    const reason = clampReason(r.text);
+    if (reason === '') return;
+    // Still the same stop? (an error, a question or a new turn since would have changed the view)
+    if ((await currentView($)).view.kind !== 'stopped' || explaining !== mine) return;
+    await setState($, { kind: 'stopReason', text: reason });
+  } catch { /* a failed or refused call just leaves the plain stopped line */
+  } finally {
+    if (explaining === mine) explaining = null;
+  }
+}
+
 async function setBg($: Dollar, event: BackgroundEvent): Promise<void> {
   await update($, bg, (b) => applyBackgroundEvent(b, event));
   poke($);
@@ -384,6 +417,7 @@ export const register: Register = (on) => {
     const ran = await next(e);
     if (e.agentId !== undefined) return ran;
     await loadSettings($);
+    cancelExplain();
     try {
       await setState($, { kind: 'turnStart' }, await $.clock.now());
     } catch { /* ignore */ }
@@ -395,8 +429,22 @@ export const register: Register = (on) => {
     if (e.agentId !== undefined) return ran;
     try {
       await setState($, { kind: 'turnComplete', isAborted: e.isAborted, answer: e.answer }, await $.clock.now());
+      if (getSettings().ai.explainStop && shouldExplain((await currentView($)).view, getSettings())) void explainStop($, e.answer);
     } catch { /* ignore */ }
     return ran;
+  });
+
+  // Opt-in: one short line, appended last at session scope, only while a task tool is offered. Off: exactly what next(e) returned.
+  on('prompt.compose', async ($, e, next) => {
+    const ran = await next(e);
+    try {
+      const settings = getSettings();
+      if (!settings.ai.askForTaskList || !shouldAskForTaskList(settings, e.tools)) return ran;
+      if ((await read($, session)).disabled || ran.sections.some((x) => x.id === TASK_LIST_SECTION_ID)) return ran;
+      return { ...ran, sections: [...ran.sections, { id: TASK_LIST_SECTION_ID, text: TASK_LIST_LINE, scope: 'session' as const }] };
+    } catch {
+      return ran;
+    }
   });
 
   // A task-notification row says a background task ended: <task-id> with a terminal <status>.
@@ -450,6 +498,7 @@ export const register: Register = (on) => {
 
   on('session.end', async ($, e, next) => {
     const ran = await next(e);
+    cancelExplain();
     try {
       await setBg($, { kind: 'sessionEnded' });
     } catch { /* ignore */ }

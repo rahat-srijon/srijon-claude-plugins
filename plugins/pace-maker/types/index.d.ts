@@ -22,7 +22,7 @@ declare module 'claude-code' {
         }[]
       }>
       session: Shaped<{
-        shape: 'state-1'
+        shape: 'state-2'
         disabled: boolean
         running: boolean
         startedAt: number | null
@@ -34,6 +34,7 @@ declare module 'claude-code' {
         denied: { tool: string } | null
         limit: { resetsAt?: string } | null
         lastEnd: { isAborted: boolean; answer: string } | null
+        stopReason: string | null
       }>
       bg: Shaped<{
         shape: 'bg-1'

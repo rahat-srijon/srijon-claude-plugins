@@ -68,7 +68,9 @@ export function deriveState(progress: Model, state: SessionState, bg: Background
     const durationMs = state.startedAt !== null && state.endedAt !== null ? state.endedAt - state.startedAt : 0;
     return { kind: 'done', done, total, durationMs };
   }
-  // No signal in the state explains a stop with tasks left, so no reason is given (never invented).
-  if (hasList(progress)) return { kind: 'stopped', done, total, left };
+  // No signal explains a stop with tasks left: the reason is only the opt-in AI one (stopReason), never invented here.
+  if (hasList(progress)) {
+    return state.stopReason ? { kind: 'stopped', done, total, left, reason: state.stopReason } : { kind: 'stopped', done, total, left };
+  }
   return { kind: 'hidden' };
 }

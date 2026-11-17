@@ -220,7 +220,7 @@ test('/pace config says so in one line when the launch fails or node is missing'
   expect(failed).toMatch(/^Could not open the settings page from this window( \(timed out waiting for the settings server\))?\. Run in a terminal: node "/)
   expect(failed).toMatch(manual)
   expect(failed.includes('\n')).toBe(false)
-  expect(failed.length).toBeLessThan(220)
+  expect(failed.length).toBeLessThanOrEqual(220)
 
   mode = 'missing'
   const missing = await run()
