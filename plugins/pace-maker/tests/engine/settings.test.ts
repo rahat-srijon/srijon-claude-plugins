@@ -215,15 +215,19 @@ test('/pace config says so in one line when the launch fails or node is missing'
   })
   const run = async () => (await $.command.run({ command: 'pace', args: 'config' } as never)).text as string
 
+  const manual = /Run in a terminal: node ".*[\/]scripts[\/]cli\.js" config$/
   const failed = await run()
-  expect(failed).toBe('Could not open the settings page: timed out waiting for the settings server')
+  expect(failed).toMatch(/^Could not open the settings page from this window( \(timed out waiting for the settings server\))?\. Run in a terminal: node "/)
+  expect(failed).toMatch(manual)
   expect(failed.includes('\n')).toBe(false)
+  expect(failed.length).toBeLessThan(220)
 
   mode = 'missing'
   const missing = await run()
-  expect(missing).toMatch(/^Could not open the settings page: Node\.js was not found/)
+  expect(missing).toMatch(/^Could not open the settings page from this window\. Run in a terminal: node "/)
+  expect(missing).toMatch(manual)
   expect(missing.includes('\n')).toBe(false)
 
   mode = 'silent'
-  expect(await run()).toMatch(/^Could not open the settings page/)
+  expect(await run()).toMatch(/^Could not open the settings page from this window[\s\S]*scripts[\/]cli\.js" config$/)
 })

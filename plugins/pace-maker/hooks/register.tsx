@@ -69,10 +69,19 @@ async function openSettingsPage($: Dollar): Promise<string> {
     const url = /https?:\/\/\S+/.exec(ran.stdout)?.[0];
     if (ran.exitCode === 0 && url !== undefined) return `Settings page: ${url}`;
     const why = (ran.stderr.split('\n').find((l) => l.trim() !== '') ?? '').replace(/^pace-maker:\s*/, '').trim();
-    return `Could not open the settings page${why === '' ? '.' : `: ${clip(why, 80)}`}`;
+    return couldNotOpen($, why);
   } catch {
-    return 'Could not open the settings page: Node.js was not found or would not start.';
+    return couldNotOpen($, '');
   }
+}
+
+/** One line that tells the user the command to run in a terminal; the reason is added only while the line stays short. */
+function couldNotOpen($: Dollar, why: string): string {
+  const base = 'Could not open the settings page from this window';
+  const manual = `. Run in a terminal: node "${$.plugin.root}/scripts/cli.js" config`;
+  const withReason = why === '' ? '' : `${base} (${clip(why, 60)})${manual}`;
+  const line = withReason !== '' && withReason.length <= 220 ? withReason : `${base}${manual}`;
+  return line.replace(/\s*\n\s*/g, ' ');
 }
 
 // ---- Drawing ---------------------------------------------------------------------------------------------------
