@@ -1,10 +1,13 @@
-// pace-maker hooks: observers only. Every hook passes the event on first and returns the answer unchanged;
+// pace-maker hooks: observers plus the drawing. The M2 hooks are observers only. Every hook passes the event on first and returns the answer unchanged;
 // its own bookkeeping runs after, inside try/catch, so a bug here can never change a tool call or a turn.
 import { atom, read, update } from 'claude-code';
-import type { Register } from 'claude-code';
+import type { EngineInterface, Register, Timer } from 'claude-code';
 import { applyBackgroundEvent, emptyBackground, type BackgroundEvent } from './lib/background.ts';
 import { applyTaskList, applyToolEvent, emptyModel, isComplete, type ToolEvent } from './lib/progress.ts';
 import { applyEvent, emptyState, type StateEvent } from './lib/state.ts';
+import { deriveState, type View } from './lib/view.ts';
+import { easeValue, formatView, type Formatted } from './lib/format.ts';
+import { defaultSettings, type Settings } from './lib/settings.ts';
 
 // The per-conversation state lives in $.state (a hot reload keeps it); the engine's scan needs the atoms spelled in this file.
 const progress = atom({ plugin: 'pace-maker', key: 'progress' } as const, emptyModel(), { shape: 'progress-1' });
@@ -12,7 +15,7 @@ const session = atom({ plugin: 'pace-maker', key: 'session' } as const, emptySta
 const bg = atom({ plugin: 'pace-maker', key: 'bg' } as const, emptyBackground(), { shape: 'bg-1' });
 
 type Rec = Record<string, unknown>;
-type Dollar = Parameters<typeof read>[0];
+type Dollar = EngineInterface;
 
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v);
 const text = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
@@ -32,12 +35,123 @@ let notified = false;
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+/** The settings seam: the settings milestone replaces this body with the stored settings (cached, no I/O per render). */
+export function getSettings(): Settings {
+  return defaultSettings();
+}
+
+// ---- Drawing ---------------------------------------------------------------------------------------------------
+// Module-level timers and the displayed bar value; a hot reload resets them and the next event or render restarts them.
+const TICK_MS = 1000;
+const FAST_MS = 50;
+const EASE_MS = 300;
+let tick: Timer | null = null;
+let fast: Timer | null = null;
+let shown: number | null = null;
+let tween: { from: number; to: number; t0: number } | null = null;
+let vscodeSeen = false;
+let lastStatus: string | undefined;
+
+const BAND_SURFACES = new Set(['terminal', 'desktop', 'mobile']);
+
+/** The bar fraction to draw at `now`: the real one, or an eased step toward it. Never invents progress inside a step. */
+function displayedFraction(view: View, settings: Settings, now: number): number | undefined {
+  if (view.kind !== 'progress') {
+    shown = null;
+    tween = null;
+    return undefined;
+  }
+  const target = view.fraction;
+  if (settings.animation !== 'smooth' || shown === null) {
+    shown = target;
+    tween = null;
+    return target;
+  }
+  if (tween === null ? shown !== target : tween.to !== target) tween = { from: shown, to: target, t0: now };
+  if (tween !== null) {
+    shown = easeValue(tween.from, tween.to, now - tween.t0, EASE_MS);
+    if (shown === tween.to) tween = null;
+  }
+  return shown;
+}
+
+/** Starts or stops the timers: a 1 s redraw while progress or working shows, nothing while hidden or idle. */
+function syncTimers($: Dollar, view: View, settings: Settings): void {
+  const active = settings.enabled && (view.kind === 'progress' || view.kind === 'working');
+  if (active && tick === null) {
+    tick = $.clock.every(TICK_MS, () => {
+      try {
+        $.ui.invalidate('ui.render');
+        void refresh($);
+      } catch { /* ignore */ }
+    });
+  } else if (!active && tick !== null) {
+    tick.cancel();
+    tick = null;
+  }
+  if (tween !== null && fast === null) {
+    // Ends on its own clock, not on a render: a collapsed band or a survey draws nothing, and the timer must not outlive the ease.
+    fast = $.clock.every(FAST_MS, () => {
+      void (async () => {
+        try {
+          const t = tween;
+          const done = t === null || (await $.clock.now()) - t.t0 >= EASE_MS;
+          if (done && t !== null) {
+            shown = t.to;
+            tween = null;
+          }
+          $.ui.invalidate('ui.render');
+          if (done) {
+            fast?.cancel();
+            fast = null;
+          }
+        } catch { /* ignore */ }
+      })();
+    });
+  } else if (tween === null && fast !== null) {
+    fast.cancel();
+    fast = null;
+  }
+}
+
+async function currentView($: Dollar): Promise<{ view: View; now: number }> {
+  const now = await $.clock.now();
+  const [p, s, b] = await Promise.all([read($, progress), read($, session), read($, bg)]);
+  return { view: deriveState(p, s, b, now), now };
+}
+
+/** Keeps the vscode status line and the timers in step with the state. Called after every state change; never throws. */
+async function refresh($: Dollar): Promise<void> {
+  try {
+    const settings = getSettings();
+    const { view, now } = await currentView($);
+    syncTimers($, view, settings);
+    // The status entry is only for a session whose sole surface has no band (vscode); a band surface draws the band.
+    const surfaces = await $.session.surfaces();
+    const vscode = surfaces.length > 0 ? surfaces.includes('vscode') && !surfaces.some((x) => BAND_SURFACES.has(x)) : vscodeSeen;
+    let text: string | undefined;
+    if (vscode && settings.enabled && settings.showOnVscodeStatus && view.kind !== 'done') {
+      text = formatView(view, settings, now)?.text;
+    }
+    if (text !== lastStatus && (vscode || lastStatus !== undefined)) {
+      $.ui.status(text);
+      lastStatus = text;
+    }
+  } catch { /* a bug here must never reach a hook */ }
+}
+
+const poke = ($: Dollar): void => {
+  void refresh($);
+};
+
 async function setState($: Dollar, event: StateEvent, now?: number): Promise<void> {
   const at = now ?? Date.now();
   await update($, session, (s) => applyEvent(s, event, at));
+  poke($);
 }
 async function setBg($: Dollar, event: BackgroundEvent): Promise<void> {
   await update($, bg, (b) => applyBackgroundEvent(b, event));
+  poke($);
 }
 
 /** Folds a finished task-list call into the progress model (and starts a fresh run when a new list begins). */
@@ -48,7 +162,10 @@ async function observeProgress($: Dollar, e: Rec, ran: Rec): Promise<void> {
   if (ran.deny !== undefined) return;
   if (tool === 'TaskList') {
     const tasks = isRec(ran.result) ? ran.result.tasks : undefined;
-    if (Array.isArray(tasks)) await update($, progress, (m) => applyTaskList(m, tasks as never));
+    if (Array.isArray(tasks)) {
+      await update($, progress, (m) => applyTaskList(m, tasks as never));
+      poke($);
+    }
     return;
   }
   const ev: ToolEvent = { tool, input, isError: ran.isError === true };
@@ -58,6 +175,7 @@ async function observeProgress($: Dollar, e: Rec, ran: Rec): Promise<void> {
   const startsList = tool === 'TaskCreate' || tool === 'TodoWrite' || (tool === PLAN && Array.isArray(input.items));
   if (startsList && ev.isError !== true && isComplete(await read($, progress))) await setState($, { kind: 'resetRun' });
   await update($, progress, (m) => applyToolEvent(m, ev));
+  poke($);
 }
 
 /** Starts or ends background items from a finished call. */
@@ -84,6 +202,51 @@ async function observeBackground($: Dollar, e: Rec, ran: Rec): Promise<void> {
 }
 
 export const register: Register = (on) => {
+  // The band above the prompt (terminal, desktop, mobile). Reads only; any failure falls back to the engine's own (nothing).
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    let f: Formatted | null = null;
+    try {
+      const settings = getSettings();
+      if (e.props.hasSurvey || !settings.enabled) return next(e);
+      const { view, now } = await currentView($);
+      f = formatView(view, settings, now, displayedFraction(view, settings, now));
+      syncTimers($, view, settings);
+    } catch {
+      f = null;
+    }
+    if (f === null) return next(e);
+    try {
+      const { Box, Text, Progress } = $.ui.resolve(e);
+      const glyph = f.glyphBar === undefined ? '' : `${f.glyphBar} `;
+      return (
+        <Box flexDirection="column" width={e.props.bodyColumns}>
+          <Text color={f.color} wrap="truncate-end">{`${glyph}${f.text}`}</Text>
+          {f.bar === undefined ? null : (
+            <Progress label={f.bar.label} value={f.bar.value} max={f.bar.max} valueText={f.bar.valueText} />
+          )}
+        </Box>
+      );
+    } catch {
+      return next(e);
+    }
+  });
+
+  // vscode draws no band: the compact text rides on the spinner line instead (the status entry is kept in refresh()).
+  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+    if (e.surface !== 'vscode') return next(e);
+    vscodeSeen = true;
+    try {
+      const settings = getSettings();
+      if (!settings.enabled || !settings.showOnVscodeStatus) return next(e);
+      const { view, now } = await currentView($);
+      const text = formatView(view, settings, now)?.text;
+      if (text === undefined) return next(e);
+      return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix} ${text}` } });
+    } catch {
+      return next(e);
+    }
+  });
+
   // Every tool call: pass it on, then observe the few tools that matter. Tools we ignore return at once.
   on('tool.call', async ($, e, next) => {
     const tool = e.tool as string;

@@ -13,7 +13,7 @@ export type View =
   | { kind: 'stopped'; done: number; total: number; left: number; reason?: string }
   | { kind: 'done'; done: number; total: number; durationMs: number }
   | { kind: 'waiting'; why: 'permission' | 'question' | 'usage-limit'; detail?: string; done: number; total: number }
-  | { kind: 'blocked'; why: 'error' | 'denied' | 'dependency'; detail?: string; done: number; total: number }
+  | { kind: 'blocked'; why: 'error' | 'denied' | 'dependency'; detail?: string; count?: number; done: number; total: number }
   | { kind: 'paused'; why: 'interrupt' | 'plan' | 'command'; detail?: string; done: number; total: number };
 
 /** Picks exactly one view. Precedence: off, permission, pause command, running, colored stop reasons, background, done, stopped, hidden. */
@@ -49,7 +49,10 @@ export function deriveState(progress: Model, state: SessionState, bg: Background
   const waitingOn = blocked(progress);
   if (waitingOn.length > 0 && left > 0) {
     const first = progress.tasks.find((t) => t.id === waitingOn[0]);
-    return withDetail({ kind: 'blocked' as const, why: 'dependency' as const, done, total }, first?.subject || undefined);
+    return withDetail(
+      { kind: 'blocked' as const, why: 'dependency' as const, count: waitingOn.length, done, total },
+      first?.subject || undefined,
+    );
   }
   if (state.limit) {
     return withDetail({ kind: 'waiting' as const, why: 'usage-limit' as const, done, total }, state.limit.resetsAt);
