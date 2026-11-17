@@ -15,11 +15,21 @@ function deepFreeze<T>(o: T): T {
 
 test('emptyState is idle and enabled', () => {
   const s = emptyState();
-  assert.equal(s.shape, 'state-1');
+  assert.equal(s.shape, 'state-2');
   assert.equal(s.disabled, false);
   assert.equal(s.running, false);
   assert.equal(s.startedAt, null);
   assert.equal(s.lastEnd, null);
+  assert.equal(s.stopReason, null);
+});
+
+test('stopReason stores the text, and turnStart and resetRun clear it', () => {
+  const s = run([{ kind: 'turnStart' }, { kind: 'turnComplete', isAborted: false, answer: 'x' }, { kind: 'stopReason', text: 'waiting on the build' }]);
+  assert.equal(s.stopReason, 'waiting on the build');
+  assert.equal(run([{ kind: 'turnStart' }], s).stopReason, null);
+  assert.equal(run([{ kind: 'resetRun' }], s).stopReason, null);
+  assert.equal(run([{ kind: 'stopReason', text: '' }], s).stopReason, null);
+  assert.equal(run([{ kind: 'stopReason', text: 'a' }], deepFreeze(emptyState())).stopReason, 'a');
 });
 
 test('turnStart sets running and startedAt, and clears the stop reasons', () => {

@@ -46,6 +46,16 @@ test('stopped: stale list, normal end, no question, no reason', () => {
   assert.equal('reason' in v, false);
 });
 
+test('stopped: the stored stop reason becomes the view reason, and only on a stopped view', () => {
+  const stopped = [{ kind: 'turnStart' }, end('Finished the first part.'), { kind: 'stopReason', text: 'waiting on the build' }] as StateEvent[];
+  assert.deepEqual(view(open, st(...stopped)), { kind: 'stopped', done: 1, total: 3, left: 2, reason: 'waiting on the build' });
+  // a colored state keeps its own reason; the stored text is not used there
+  assert.equal(view(open, st(...stopped, { kind: 'permissionPrompt', tool: 'Bash' })).kind, 'waiting');
+  assert.equal(view(finished, st(...stopped)).kind, 'done');
+  // a new turn drops it
+  assert.equal(view(open, st(...stopped, { kind: 'turnStart' })).kind, 'progress');
+});
+
 test('done: all completed, with the turn duration', () => {
   const s = applyEvent(applyEvent(emptyState(), { kind: 'turnStart' }, 1000), end('all done'), 4000);
   assert.deepEqual(view(finished, s), { kind: 'done', done: 2, total: 2, durationMs: 3000 });
