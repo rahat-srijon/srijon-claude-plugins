@@ -1,11 +1,11 @@
 {
-  "name": "claude-pace-maker",
+  "name": "pace-maker",
   "version": "0.1.0",
   "description": "A per-conversation progress band for Claude Code: task progress, what Claude is doing now, and why it stopped, at zero model tokens.",
   "author": {
     "name": "Md. Rahat Islam"
   },
-  "homepage": "https://github.com/rahat-srijon/srijon-claude-plugins/tree/master/plugins/claude-pace-maker",
+  "homepage": "https://github.com/rahat-srijon/srijon-claude-plugins/tree/master/plugins/pace-maker",
   "repository": "https://github.com/rahat-srijon/srijon-claude-plugins",
   "license": "MIT",
   "keywords": [
