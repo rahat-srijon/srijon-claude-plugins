@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EXPLAIN_INSTRUCTION, EXPLAIN_REQUEST, TASK_LIST_LINE, buildExplainPrompt, clampReason, shouldAskForTaskList, shouldExplain,
+  EXPLAIN_INSTRUCTION, EXPLAIN_REQUEST, buildExplainPrompt, clampReason, shouldExplain,
 } from '../hooks/lib/explain.ts';
 import type { View } from '../hooks/lib/view.ts';
 
-const on = { enabled: true, ai: { explainStop: true, askForTaskList: true } };
-const off = { enabled: true, ai: { explainStop: false, askForTaskList: false } };
+const on = { enabled: true, explainStop: true };
+const off = { enabled: true, explainStop: false };
 const stopped: View = { kind: 'stopped', done: 1, total: 3, left: 2 };
 
 test('shouldExplain: only an unexplained stopped view with the setting and the plugin on', () => {
@@ -44,16 +44,4 @@ test('clampReason: 8 words, 60 characters, one line, no quotes, no trailing peri
   assert.ok(long.length <= 60, long);
   assert.equal(clampReason(`${'a'.repeat(100)} b`), 'a'.repeat(60));
   for (const bad of ['', '   ', '\n', '""', '.', undefined, null, 5, {}]) assert.equal(clampReason(bad), '');
-});
-
-test('shouldAskForTaskList: setting and plugin on, and a task tool among the offered tools', () => {
-  assert.equal(shouldAskForTaskList(on, ['Bash', 'TodoWrite']), true);
-  assert.equal(shouldAskForTaskList(on, ['mcp__ccd_turn__update_plan']), true);
-  assert.equal(shouldAskForTaskList(on, ['TaskCreate', 'TaskUpdate']), true);
-  assert.equal(shouldAskForTaskList(on, ['Bash', 'Read']), false);
-  assert.equal(shouldAskForTaskList(on, []), false);
-  assert.equal(shouldAskForTaskList(on, undefined), false); // cannot tell: skip, no tokens spent
-  assert.equal(shouldAskForTaskList(off, ['TodoWrite']), false);
-  assert.equal(shouldAskForTaskList({ ...on, enabled: false }, ['TodoWrite']), false);
-  assert.ok(TASK_LIST_LINE.length < 120);
 });

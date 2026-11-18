@@ -15,5 +15,69 @@
     "mod",
     "productivity"
   ],
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enabled",
+      "description": "Show the progress band above the prompt",
+      "default": true
+    },
+    "barStyle": {
+      "type": "string",
+      "title": "Bar style",
+      "description": "How the progress bar is drawn: blocks, thin, dots or ascii",
+      "default": "blocks",
+      "options": [
+        "blocks",
+        "thin",
+        "dots",
+        "ascii"
+      ]
+    },
+    "barWidth": {
+      "type": "number",
+      "title": "Bar width",
+      "description": "Width of the progress bar in cells (10 to 40)",
+      "default": 20,
+      "min": 10,
+      "max": 40
+    },
+    "showCount": {
+      "type": "boolean",
+      "title": "Show step count",
+      "description": "Show done/total steps, e.g. 3/5",
+      "default": true
+    },
+    "showPercent": {
+      "type": "boolean",
+      "title": "Show percent",
+      "description": "Show the percentage done",
+      "default": false
+    },
+    "showLabel": {
+      "type": "boolean",
+      "title": "Show step label",
+      "description": "Show the name of the step in progress",
+      "default": true
+    },
+    "showElapsed": {
+      "type": "boolean",
+      "title": "Show elapsed time",
+      "description": "Show how long the work has been running",
+      "default": true
+    },
+    "showSubagents": {
+      "type": "boolean",
+      "title": "Show subagents",
+      "description": "Show how many subagents are running",
+      "default": true
+    },
+    "explainStop": {
+      "type": "boolean",
+      "title": "Explain why it stopped",
+      "description": "Uses AI: when Claude stops with steps left, one small-model call writes a short reason",
+      "default": false
+    }
+  }
 }

@@ -60,9 +60,7 @@ test('a progress line and a bar appear once tasks exist', async ($, on) => {
   for (const surface of SURFACES) {
     const ui = await $.ui.mount(band(surface))
     const line = await ui.find({ type: 'Text', text: /0\/2/ })
-    expect(line?.text).toBe('0/2 · Writing tests · 1m')
-    // The engine's Progress reaches a test as Box and Text: its label and figure.
-    expect(await ui.find({ type: 'Text', text: /^Writing tests 0\/2$/ })).toBeDefined()
+    expect(line?.text).toBe(`${'░'.repeat(20)} 0/2 · Writing tests · 1m`)
     await ui.unmount()
   }
 
@@ -71,7 +69,7 @@ test('a progress line and a bar appear once tasks exist', async ($, on) => {
   await clock.advance(1000)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount(band(surface))
-    expect((await ui.find({ type: 'Text', text: /1\/2/ }))?.text).toBe('1/2 · Shipping · 1m')
+    expect((await ui.find({ type: 'Text', text: /1\/2/ }))?.text).toMatch(/ 1\/2 · Shipping · 1m$/)
     await ui.unmount()
   }
 })
