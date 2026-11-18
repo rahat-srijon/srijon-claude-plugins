@@ -64,22 +64,22 @@ test('done: all completed, with the turn duration', () => {
 
 test('waiting: permission, question and usage limit', () => {
   assert.deepEqual(view(open, st({ kind: 'permissionPrompt', tool: 'Bash' })), {
-    kind: 'waiting', why: 'permission', detail: 'Bash', done: 1, total: 3,
+    kind: 'waiting', why: 'permission', detail: 'Bash', done: 1, total: 3, running: false,
   });
   assert.deepEqual(view(open, st({ kind: 'turnStart' }, end('Which file should I edit?'))), {
-    kind: 'waiting', why: 'question', done: 1, total: 3,
+    kind: 'waiting', why: 'question', done: 1, total: 3, running: false,
   });
   assert.deepEqual(view(open, st({ kind: 'usageLimit', resetsAt: '5pm' })), {
-    kind: 'waiting', why: 'usage-limit', detail: '5pm', done: 1, total: 3,
+    kind: 'waiting', why: 'usage-limit', detail: '5pm', done: 1, total: 3, running: false,
   });
 });
 
 test('blocked: error, denied and dependency', () => {
   assert.deepEqual(view(open, st({ kind: 'turnStart' }, { kind: 'stopFailure', message: 'API error 529' })), {
-    kind: 'blocked', why: 'error', detail: 'API error 529', done: 1, total: 3,
+    kind: 'blocked', why: 'error', detail: 'API error 529', done: 1, total: 3, running: false,
   });
   assert.deepEqual(view(open, st({ kind: 'permissionDenied', tool: 'Write' })), {
-    kind: 'blocked', why: 'denied', detail: 'Write', done: 1, total: 3,
+    kind: 'blocked', why: 'denied', detail: 'Write', done: 1, total: 3, running: false,
   });
   const dep = [
     { tool: 'TaskCreate', input: { subject: 'first' }, result: { task: { id: '1' } } },
@@ -87,17 +87,17 @@ test('blocked: error, denied and dependency', () => {
     { tool: 'TaskUpdate', input: { taskId: '2', addBlockedBy: ['1'] } },
   ].reduce(applyToolEvent, emptyModel());
   assert.deepEqual(view(dep, st({ kind: 'turnStart' }, end('stopped'))), {
-    kind: 'blocked', why: 'dependency', count: 1, detail: 'second', done: 0, total: 2,
+    kind: 'blocked', why: 'dependency', count: 1, detail: 'second', done: 0, total: 2, running: false,
   });
 });
 
 test('paused: command, plan and interrupt', () => {
   assert.deepEqual(view(open, st({ kind: 'pause', reason: 'lunch' })), {
-    kind: 'paused', why: 'command', detail: 'lunch', done: 1, total: 3,
+    kind: 'paused', why: 'command', detail: 'lunch', done: 1, total: 3, running: false,
   });
-  assert.deepEqual(view(open, st({ kind: 'planWaiting' })), { kind: 'paused', why: 'plan', done: 1, total: 3 });
+  assert.deepEqual(view(open, st({ kind: 'planWaiting' })), { kind: 'paused', why: 'plan', done: 1, total: 3, running: false });
   assert.deepEqual(view(open, st({ kind: 'turnStart' }, end('stopped', true))), {
-    kind: 'paused', why: 'interrupt', done: 1, total: 3,
+    kind: 'paused', why: 'interrupt', done: 1, total: 3, running: false,
   });
 });
 
@@ -202,7 +202,7 @@ test('a question with no tasks left is not waiting', () => {
 
 test('an error with no list is still blocked', () => {
   const v = view(emptyModel(), st({ kind: 'turnStart' }, { kind: 'stopFailure', message: 'boom' }));
-  assert.deepEqual(v, { kind: 'blocked', why: 'error', detail: 'boom', done: 0, total: 0 });
+  assert.deepEqual(v, { kind: 'blocked', why: 'error', detail: 'boom', done: 0, total: 0, running: false });
 });
 
 test('reset: resetRun then a new list shows progress, not done', () => {
@@ -229,4 +229,11 @@ test('resume after compaction: JSON round trip gives the same view', () => {
 test('elapsedMs is 0 when there is no start time', () => {
   const v = view(open, { ...emptyState(), running: true });
   assert.equal(v.kind === 'progress' && v.elapsedMs, 0);
+});
+
+test('running is true for a wait or a pause raised mid-turn and false once the turn ended', () => {
+  const mid = st({ kind: 'turnStart' }, { kind: 'permissionPrompt', tool: 'Bash' });
+  assert.equal((view(emptyModel(), mid) as { running: boolean }).running, true);
+  assert.equal((view(open, st({ kind: 'turnStart' }, { kind: 'pause', reason: 'p' })) as { running: boolean }).running, true);
+  assert.equal((view(open, st({ kind: 'turnStart' }, end('Which one?'))) as { running: boolean }).running, false);
 });

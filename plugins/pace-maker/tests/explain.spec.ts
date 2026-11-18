@@ -16,8 +16,8 @@ test('shouldExplain: only an unexplained stopped view with the setting and the p
   assert.equal(shouldExplain({ ...stopped, reason: 'already known' }, on), false);
   for (const v of [
     { kind: 'hidden' }, { kind: 'working', elapsedMs: 1, subagents: 0 }, { kind: 'done', done: 1, total: 1, durationMs: 1 },
-    { kind: 'waiting', why: 'question', done: 1, total: 3 }, { kind: 'blocked', why: 'error', done: 1, total: 3 },
-    { kind: 'paused', why: 'interrupt', done: 1, total: 3 }, { kind: 'progress', done: 1, total: 3, fraction: 0.3, elapsedMs: 1 },
+    { kind: 'waiting', why: 'question', done: 1, total: 3, running: false }, { kind: 'blocked', why: 'error', done: 1, total: 3, running: false },
+    { kind: 'paused', why: 'interrupt', done: 1, total: 3, running: false }, { kind: 'progress', done: 1, total: 3, fraction: 0.3, elapsedMs: 1 },
   ] as View[]) assert.equal(shouldExplain(v, on), false, v.kind);
 });
 

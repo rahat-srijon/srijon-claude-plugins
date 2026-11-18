@@ -1,4 +1,4 @@
-// pace-maker hooks: observers plus the drawing. The M2 hooks are observers only. Every hook passes the event on first and returns the answer unchanged;
+// pace-maker hooks: observers plus the one band row. Every hook passes the event on first and returns the answer unchanged;
 // its own bookkeeping runs after, inside try/catch, so a bug here can never change a tool call or a turn.
 import { atom, read, update } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
@@ -6,7 +6,7 @@ import { applyBackgroundEvent, emptyBackground, type BackgroundEvent } from './l
 import { applyTaskList, applyToolEvent, emptyModel, isComplete, type ToolEvent } from './lib/progress.ts';
 import { applyEvent, emptyState, type StateEvent } from './lib/state.ts';
 import { deriveState, type View } from './lib/view.ts';
-import { easeValue, formatView, type Formatted } from './lib/format.ts';
+import { formatView, type Formatted } from './lib/format.ts';
 import { EXPLAIN_REQUEST, buildExplainPrompt, clampReason, shouldExplain } from './lib/explain.ts';
 import { failureEvent, isDeniedResult } from './lib/failure.ts';
 import { defaultSettings, normalizeSettings, type Settings } from './lib/settings.ts';
@@ -43,76 +43,38 @@ export function getSettings(): Settings {
 }
 
 // ---- Drawing ---------------------------------------------------------------------------------------------------
-// Module-level timers and the displayed bar value; a hot reload resets them and the next event or render restarts them.
-const TICK_MS = 1000;
-const FAST_MS = 50;
-const EASE_MS = 300;
-let tick: Timer | null = null;
-let fast: Timer | null = null;
-let shown: number | null = null;
-let tween: { from: number; to: number; t0: number } | null = null;
-let vscodeSeen = false;
-let lastStatus: string | undefined;
+// One module-level timer and counter; a hot reload resets them and the next event or render restarts the timer.
+const TICK_MS = 250;
+let ticker: Timer | null = null;
+let tick = 0;
 
-const BAND_SURFACES = new Set(['terminal', 'desktop', 'mobile']);
-
-/** The bar fraction to draw at `now`: the real one, or an eased step toward it. Never invents progress inside a step. */
-function displayedFraction(view: View, now: number): number | undefined {
-  if (view.kind !== 'progress') {
-    shown = null;
-    tween = null;
-    return undefined;
+/** True while the band has motion or a clock to keep fresh: progress, working, or a wait or pause raised mid-turn. */
+function isLive(view: View): boolean {
+  switch (view.kind) {
+    case 'progress':
+    case 'working':
+      return true;
+    case 'waiting':
+    case 'paused':
+      return view.running;
+    default:
+      return false;
   }
-  const target = view.fraction;
-  if (shown === null) {
-    shown = target;
-    tween = null;
-    return target;
-  }
-  if (tween === null ? shown !== target : tween.to !== target) tween = { from: shown, to: target, t0: now };
-  if (tween !== null) {
-    shown = easeValue(tween.from, tween.to, now - tween.t0, EASE_MS);
-    if (shown === tween.to) tween = null;
-  }
-  return shown;
 }
 
-/** Starts or stops the timers: a 1 s redraw while progress or working shows, nothing while hidden or idle. */
-function syncTimers($: Dollar, view: View, settings: Settings): void {
-  const active = settings.enabled && (view.kind === 'progress' || view.kind === 'working');
-  if (active && tick === null) {
-    tick = $.clock.every(TICK_MS, () => {
+/** Starts or stops the 250 ms ticker: it runs only while a live view shows, never while hidden or idle. */
+function syncTicker($: Dollar, view: View, settings: Settings): void {
+  const active = settings.enabled && isLive(view);
+  if (active && ticker === null) {
+    ticker = $.clock.every(TICK_MS, () => {
       try {
+        tick += 1;
         $.ui.invalidate('ui.render');
-        void refresh($);
       } catch { /* ignore */ }
     });
-  } else if (!active && tick !== null) {
-    tick.cancel();
-    tick = null;
-  }
-  if (tween !== null && fast === null) {
-    // Ends on its own clock, not on a render: a collapsed band or a survey draws nothing, and the timer must not outlive the ease.
-    fast = $.clock.every(FAST_MS, () => {
-      void (async () => {
-        try {
-          const t = tween;
-          const done = t === null || (await $.clock.now()) - t.t0 >= EASE_MS;
-          if (done && t !== null) {
-            shown = t.to;
-            tween = null;
-          }
-          $.ui.invalidate('ui.render');
-          if (done) {
-            fast?.cancel();
-            fast = null;
-          }
-        } catch { /* ignore */ }
-      })();
-    });
-  } else if (tween === null && fast !== null) {
-    fast.cancel();
-    fast = null;
+  } else if (!active && ticker !== null) {
+    ticker.cancel();
+    ticker = null;
   }
 }
 
@@ -122,23 +84,10 @@ async function currentView($: Dollar): Promise<{ view: View; now: number }> {
   return { view: deriveState(p, s, b, now), now };
 }
 
-/** Keeps the vscode status line and the timers in step with the state. Called after every state change; never throws. */
+/** Keeps the ticker in step with the state. Called after every state change; never throws. */
 async function refresh($: Dollar): Promise<void> {
   try {
-    const settings = getSettings();
-    const { view, now } = await currentView($);
-    syncTimers($, view, settings);
-    // The status entry is only for a session whose sole surface has no band (vscode); a band surface draws the band.
-    const surfaces = await $.session.surfaces();
-    const vscode = surfaces.length > 0 ? surfaces.includes('vscode') && !surfaces.some((x) => BAND_SURFACES.has(x)) : vscodeSeen;
-    let text: string | undefined;
-    if (vscode && settings.enabled && view.kind !== 'done') {
-      text = formatView(view, settings, now)?.text;
-    }
-    if (text !== lastStatus && (vscode || lastStatus !== undefined)) {
-      $.ui.status(text);
-      lastStatus = text;
-    }
+    syncTicker($, (await currentView($)).view, getSettings());
   } catch { /* a bug here must never reach a hook */ }
 }
 
@@ -237,43 +186,37 @@ async function observeBackground($: Dollar, e: Rec, ran: Rec): Promise<void> {
 
 export const register: Register = (on, options) => {
   cached = normalizeSettings(options);
-  // The band above the prompt (terminal, desktop, mobile). Reads only; any failure falls back to the engine's own (nothing).
+  // The band: one row above the prompt on every surface (terminal, desktop, vscode). Reads only; it never writes state.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     let f: Formatted | null = null;
     try {
       const settings = getSettings();
       if (e.props.hasSurvey || !settings.enabled) return next(e);
       const { view, now } = await currentView($);
-      f = formatView(view, settings, now, displayedFraction(view, now));
-      syncTimers($, view, settings);
+      f = formatView(view, settings, tick, now);
+      syncTicker($, view, settings);
     } catch {
-      f = null;
+      return next(e);
     }
     if (f === null) return next(e);
     try {
       const { Box, Text } = $.ui.resolve(e);
-      const glyph = f.glyphBar === undefined ? '' : `${f.glyphBar} `;
+      const bar = f.bar;
       return (
-        <Box flexDirection="column" width={e.props.bodyColumns}>
-          <Text color={f.color} wrap="truncate-end">{`${glyph}${f.text}`}</Text>
+        <Box flexDirection="row" flexWrap="wrap">
+          <Text color={f.tone} bold>{`${f.icon} ${f.text} `}</Text>
+          {bar === null ? null : (
+            <Box key="bar" flexDirection="row">
+              <Text dimColor>{bar.open}</Text>
+              {bar.parts.map((part, i) => (
+                <Text key={`p${i}`} color={part.used ? f.tone : undefined} dimColor={!part.used}>{part.text}</Text>
+              ))}
+              <Text dimColor>{bar.close}</Text>
+            </Box>
+          )}
+          {f.tail === '' ? null : <Text dimColor>{`  ${f.tail}`}</Text>}
         </Box>
       );
-    } catch {
-      return next(e);
-    }
-  });
-
-  // vscode draws no band: the compact text rides on the spinner line instead (the status entry is kept in refresh()).
-  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
-    if (e.surface !== 'vscode') return next(e);
-    vscodeSeen = true;
-    try {
-      const settings = getSettings();
-      if (!settings.enabled) return next(e);
-      const { view, now } = await currentView($);
-      const text = formatView(view, settings, now)?.text;
-      if (text === undefined) return next(e);
-      return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix} ${text}` } });
     } catch {
       return next(e);
     }
@@ -383,6 +326,8 @@ export const register: Register = (on, options) => {
   on('session.end', async ($, e, next) => {
     const ran = await next(e);
     cancelExplain();
+    ticker?.cancel();
+    ticker = null;
     try {
       await setBg($, { kind: 'sessionEnded' });
     } catch { /* ignore */ }
