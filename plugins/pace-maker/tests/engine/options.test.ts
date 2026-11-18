@@ -1,5 +1,5 @@
 import { test, expect, mock } from 'claude-code/testing'
-import { drawn } from './kit'
+import { drawn, look } from './kit'
 
 function engineBottom(on: any) {
   let n = 0
@@ -18,21 +18,25 @@ async function twoTasks($: any) {
   await $.tool.call({ tool: 'TaskUpdate', taskId: '2', status: 'in_progress', activeForm: 'Doing two' })
 }
 
-test('the manifest defaults draw blocks, 20 cells, the count, the label and the time', async ($, on) => {
+test('the manifest defaults draw the smooth bar, the count, the label and the time', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   engineBottom(on)
   await twoTasks($)
   await clock.advance(1000)
-  const text = await drawn($)
-  expect(text).toMatch(/^▶ Progress [█░]{20} {2}1\/2 · Doing two · 1s$/)
+  expect(await drawn($)).toBe('▶ Progress · Doing two  1/2 · 1s')
+  expect((await look($)).raster).toMatchObject({ columns: 80, rows: 1 })
+  expect((await look($, 'desktop')).svg?.source).toMatch(/^<svg /)
 })
 
-test('options pick the bar style, its width and the fields', { options: { barStyle: 'dots', barWidth: 10, showPercent: true, showLabel: false, showElapsed: false } }, async ($, on) => {
+test('options pick the bar style and the fields', { options: { barStyle: 'dots', showPercent: true, showLabel: false, showElapsed: false } }, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   engineBottom(on)
   await twoTasks($)
   await clock.advance(1000)
-  expect(await drawn($)).toMatch(/^▶ Progress ●{5}○{5} {2}1\/2 · 50%$/)
+  const v = await look($)
+  expect(v.row).toBe('▶ Progress  1/2 · 50%')
+  expect(v.glyphs).toBe(`${'●'.repeat(30)}${'○'.repeat(30)}`)
+  expect(v.raster).toBeUndefined()
 })
 
 // The engine checks options against userConfig itself: a picker value outside its list reads as the default (the module
@@ -42,5 +46,7 @@ test('a barStyle outside the list reads as the default', { options: { barStyle: 
   engineBottom(on)
   await twoTasks($)
   await clock.advance(1000)
-  expect(await drawn($)).toMatch(/^▶ Progress [█░]{20} {2}1\/2 · 50% · Doing two · 1s$/)
+  const v = await look($)
+  expect(v.row).toBe('▶ Progress · Doing two  1/2 · 50% · 1s')
+  expect(v.raster?.rows).toBe(1)
 })

@@ -8,8 +8,7 @@ const manifest = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json'
 test('defaults match the brief', () => {
   assert.deepEqual(defaultSettings(), {
     enabled: true,
-    barStyle: 'blocks',
-    barWidth: 20,
+    barStyle: 'smooth',
     showCount: true,
     showPercent: false,
     showLabel: true,
@@ -23,10 +22,8 @@ test('plugin.json userConfig declares the same fields with the same defaults', (
   const uc = manifest.userConfig;
   assert.deepEqual(Object.keys(uc).sort(), Object.keys(defaultSettings()).sort());
   for (const [k, v] of Object.entries(defaultSettings())) assert.equal(uc[k].default, v, k);
-  assert.deepEqual(uc.barStyle.options, ['blocks', 'thin', 'dots', 'ascii']);
-  assert.equal(uc.barWidth.type, 'number');
-  assert.equal(uc.barWidth.min, 10);
-  assert.equal(uc.barWidth.max, 40);
+  assert.deepEqual(uc.barStyle.options, ['smooth', 'blocks', 'thin', 'dots', 'ascii']);
+  assert.equal(uc.barWidth, undefined);
   assert.ok(String(uc.explainStop.description).startsWith('Uses AI:'));
   for (const f of Object.values<any>(uc)) assert.ok(f.title && f.description, 'every field has a title and a description');
 });
@@ -52,7 +49,7 @@ test('garbage input gives the defaults and never throws', () => {
 
 test('each field falls back on its own', () => {
   const s = normalizeSettings({
-    enabled: 'yes', barStyle: 'native', barWidth: 'wide', showCount: 0, showPercent: true, showLabel: null, showElapsed: false,
+    enabled: 'yes', barStyle: 'native', showCount: 0, showPercent: true, showLabel: null, showElapsed: false,
     showSubagents: [], explainStop: 1,
   });
   assert.deepEqual(s, { ...defaultSettings(), showPercent: true, showElapsed: false });
@@ -60,22 +57,16 @@ test('each field falls back on its own', () => {
 
 test('valid values are kept', () => {
   const want = {
-    enabled: false, barStyle: 'dots', barWidth: 30, showCount: false, showPercent: true, showLabel: false, showElapsed: false,
+    enabled: false, barStyle: 'dots', showCount: false, showPercent: true, showLabel: false, showElapsed: false,
     showSubagents: false, explainStop: true,
   };
   assert.deepEqual(normalizeSettings(want), want);
-  for (const style of ['blocks', 'thin', 'dots', 'ascii']) assert.equal(normalizeSettings({ barStyle: style }).barStyle, style);
+  for (const style of ['smooth', 'blocks', 'thin', 'dots', 'ascii']) assert.equal(normalizeSettings({ barStyle: style }).barStyle, style);
 });
 
-test('barWidth is rounded and clamped to 10-40; a numeric string counts, junk falls back to 20', () => {
-  const w = (v: unknown) => normalizeSettings({ barWidth: v }).barWidth;
-  assert.equal(w(25.6), 26);
-  assert.equal(w(3), 10);
-  assert.equal(w(500), 40);
-  assert.equal(w(-5), 10);
-  assert.equal(w('15'), 15);
-  assert.equal(w(' 25 '), 25);
-  for (const bad of ['', 'x', NaN, Infinity, null, undefined, true, {}, []]) assert.equal(w(bad), 20, String(bad));
+test('barWidth is gone: it is ignored whatever it holds', () => {
+  assert.deepEqual(normalizeSettings({ barWidth: 30 }), defaultSettings());
+  assert.equal('barWidth' in defaultSettings(), false);
 });
 
 test('removed fields are ignored', () => {

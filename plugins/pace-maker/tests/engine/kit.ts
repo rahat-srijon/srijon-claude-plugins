@@ -23,22 +23,65 @@ export const band = (surface: Surface = 'terminal', extra: Record<string, unknow
     plugin: 'pace-maker',
     surface,
     component: 'AbovePrompt',
+    requestId: 'band',
     props: { hasSurvey: false, isCollapsed: false, isWorking: true, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 11 }, ...extra },
   }) as never
 
-/** The whole band row as one string (every Text joined), or undefined when the plugin drew nothing. */
-export async function drawn($: any, surface: Surface = 'terminal'): Promise<string | undefined> {
-  const ui = await $.ui.mount(band(surface))
-  const texts = await ui.findAll({ type: 'Text' })
-  await ui.unmount()
-  return texts.length === 0 ? undefined : texts.map((t: { text: string }) => t.text).join('')
+export type Look = {
+  /** Row 1 as drawn: the state text, then the tail after two spaces; undefined when the plugin drew nothing. */
+  row: string | undefined
+  left: string | undefined
+  tail: string | undefined
+  /** The props of the state run in row 1 (colour, bold), the runs of the left part, and the props of the Text that truncates. */
+  leftProps: Record<string, any> | undefined
+  leftRuns: { text: string; props: Record<string, any> }[]
+  outerProps: Record<string, any> | undefined
+  /** The hand-drawn glyph bar, joined (the fallback), or '' when there is none. */
+  glyphs: string
+  raster: Record<string, any> | undefined
+  svg: Record<string, any> | undefined
+  /** The outer Box (the column of the two rows) and row 1's Box (the one that spreads left and tail). */
+  outer: Record<string, any> | undefined
+  rowBox: Record<string, any> | undefined
 }
 
-/** How many cells of a drawn row are used and rest, counted from the `blocks` glyphs. */
-export const cellsOf = (row: string | undefined) => ({
-  used: (row?.match(/█/g) ?? []).length,
-  rest: (row?.match(/░/g) ?? []).length,
-})
+/** Mounts the band once and reads what it drew. */
+export async function look($: any, surface: Surface = 'terminal', extra: Record<string, unknown> = {}): Promise<Look> {
+  const ui = await $.ui.mount(band(surface, extra))
+  const texts = await ui.findAll({ type: 'Text' })
+  const boxes = await ui.findAll({ type: 'Box' })
+  const raster = (await ui.find({ type: 'Raster' }))?.props
+  const svg = (await ui.find({ type: 'Svg' }))?.props
+  await ui.unmount()
+  // Row 1 is an outer Text that truncates (holding the styled state run and the dim step run), then the tail Text.
+  const outers = texts.filter((t: any) => t.props.wrap === 'truncate-end')
+  const first = texts.indexOf(outers[0])
+  const left = outers[0]?.text as string | undefined
+  const nested: any[] = []
+  let joined = ''
+  for (let i = first + 1; left !== undefined && i < texts.length && joined !== left; i += 1) {
+    if (!left.startsWith(joined + texts[i].text)) break
+    joined += texts[i].text
+    nested.push(texts[i])
+  }
+  const tail = outers[1]?.text as string | undefined
+  const glyphTexts = texts.filter((t: any) => !outers.includes(t) && !nested.includes(t))
+  return {
+    row: left === undefined ? undefined : tail === undefined ? left : `${left}  ${tail}`,
+    left,
+    tail,
+    leftProps: nested[0]?.props,
+    leftRuns: nested.map((t: any) => ({ text: t.text, props: t.props })),
+    outerProps: outers[0]?.props,
+    glyphs: glyphTexts.map((t: any) => t.text).join(''),
+    raster,
+    svg,
+    outer: boxes.find((b: any) => b.props.flexDirection === 'column')?.props,
+    rowBox: boxes.find((b: any) => b.props.justifyContent === 'space-between')?.props,
+  }
+}
 
-/** The bar cells of a drawn `blocks` row, in track order. */
-export const trackOf = (row: string | undefined): string => row?.match(/[█░]+/g)?.join('') ?? ''
+/** Row 1 as one string, or undefined when the plugin drew nothing. */
+export async function drawn($: any, surface: Surface = 'terminal'): Promise<string | undefined> {
+  return (await look($, surface)).row
+}

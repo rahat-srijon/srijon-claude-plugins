@@ -25,22 +25,15 @@
     "barStyle": {
       "type": "string",
       "title": "Bar style",
-      "description": "How the progress bar is drawn: blocks, thin, dots or ascii",
-      "default": "blocks",
+      "description": "smooth draws a gradient bar (terminal cells, or a vector bar in the desktop app and VS Code); blocks, thin, dots and ascii draw a plain text bar",
+      "default": "smooth",
       "options": [
+        "smooth",
         "blocks",
         "thin",
         "dots",
         "ascii"
       ]
-    },
-    "barWidth": {
-      "type": "number",
-      "title": "Bar width",
-      "description": "Width of the progress bar in cells (10 to 40)",
-      "default": 20,
-      "min": 10,
-      "max": 40
     },
     "showCount": {
       "type": "boolean",

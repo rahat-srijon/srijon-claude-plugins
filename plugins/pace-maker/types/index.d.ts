@@ -22,11 +22,13 @@ declare module 'claude-code' {
         }[]
       }>
       session: Shaped<{
-        shape: 'state-2'
+        shape: 'state-3'
         disabled: boolean
         running: boolean
         startedAt: number | null
+        turnStartedAt: number | null
         endedAt: number | null
+        toolCalls: number
         permission: { tool: string } | null
         pause: { reason: string } | null
         planWaiting: boolean

@@ -2,11 +2,16 @@
 // JSON-serializable (no Map, Set, Date or functions); applyEvent returns a new state and never throws.
 
 export type SessionState = {
-  shape: 'state-2';
+  shape: 'state-3';
   disabled: boolean;
   running: boolean;
+  /** When the run began (the first turn, or the first after a finished list); elapsed time on a task list counts from here. */
   startedAt: number | null;
+  /** When the latest turn started (every turn): the clock of a turn with no task list. */
+  turnStartedAt: number | null;
   endedAt: number | null;
+  /** Tool calls the main loop made since the latest turn started. */
+  toolCalls: number;
   permission: { tool: string } | null;
   pause: { reason: string } | null;
   planWaiting: boolean;
@@ -20,6 +25,7 @@ export type SessionState = {
 
 export type StateEvent =
   | { kind: 'turnStart' }
+  | { kind: 'toolCall' }
   | { kind: 'turnComplete'; isAborted: boolean; answer: string }
   | { kind: 'stopReason'; text: string }
   | { kind: 'permissionPrompt'; tool: string }
@@ -36,11 +42,13 @@ export type StateEvent =
 /** A fresh state: enabled, idle, nothing to report. */
 export function emptyState(): SessionState {
   return {
-    shape: 'state-2',
+    shape: 'state-3',
     disabled: false,
     running: false,
     startedAt: null,
+    turnStartedAt: null,
     endedAt: null,
+    toolCalls: 0,
     permission: null,
     pause: null,
     planWaiting: false,
@@ -60,6 +68,8 @@ export function applyEvent(state: SessionState, event: StateEvent, now: number =
         ...state,
         running: true,
         startedAt: state.startedAt ?? now,
+        turnStartedAt: now,
+        toolCalls: 0,
         permission: null,
         pause: null,
         planWaiting: false,
@@ -69,6 +79,8 @@ export function applyEvent(state: SessionState, event: StateEvent, now: number =
         lastEnd: null,
         stopReason: null,
       };
+    case 'toolCall':
+      return { ...state, toolCalls: state.toolCalls + 1 };
     case 'turnComplete':
       return {
         ...state,

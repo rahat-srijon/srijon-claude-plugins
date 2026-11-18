@@ -196,8 +196,55 @@ test('precedence 7 over 8 and 9: done, then stopped, then hidden', () => {
   assert.equal(view(emptyModel(), st({ kind: 'turnStart' }, end())).kind, 'hidden');
 });
 
-test('a question with no tasks left is not waiting', () => {
-  assert.equal(view(finished, st({ kind: 'turnStart' }, end('Anything else?'))).kind, 'done');
+test('a question is waiting whether or not tasks are left', () => {
+  const v = view(finished, st({ kind: 'turnStart' }, end('Anything else?')));
+  assert.equal(v.kind === 'waiting' && v.why, 'question');
+});
+
+test('a plain-text question with no list at all is Waiting for your answer', () => {
+  const v = view(emptyModel(), st({ kind: 'turnStart' }, end('Which file should I change?')));
+  assert.deepEqual(v, { kind: 'waiting', why: 'question', done: 0, total: 0, running: false });
+});
+
+const worked = (...e: StateEvent[]): SessionState => {
+  let s = emptyState();
+  s = applyEvent(s, { kind: 'turnStart' }, 1000);
+  for (const ev of e) s = applyEvent(s, ev, 1000);
+  return s;
+};
+const endAt = (s: SessionState, at: number, answer = 'ok'): SessionState => applyEvent(s, { kind: 'turnComplete', isAborted: false, answer }, at);
+
+test('no list: a turn that ran a tool ends as Done (full bar, no counts) and stays until the next turn', () => {
+  const s = endAt(worked({ kind: 'toolCall' }), 41_000);
+  assert.deepEqual(view(emptyModel(), s, emptyBackground(), 500_000), { kind: 'done', done: 0, total: 0, durationMs: 40_000 });
+  // A new turn replaces it; a quick reply with no tool leaves nothing.
+  const next = applyEvent(s, { kind: 'turnStart' }, 600_000);
+  assert.equal(view(emptyModel(), next, emptyBackground(), 601_000).kind, 'working');
+  assert.deepEqual(view(emptyModel(), endAt(next, 602_000), emptyBackground(), 603_000), { kind: 'hidden' });
+});
+
+test('no list: a turn of 8 s or more counts as work even with no tool call; 7.9 s does not', () => {
+  assert.deepEqual(view(emptyModel(), endAt(worked(), 9000)), { kind: 'done', done: 0, total: 0, durationMs: 8000 });
+  assert.deepEqual(view(emptyModel(), endAt(worked(), 8900)), { kind: 'hidden' });
+});
+
+test('no list: Done keeps its reasons: a stop failure, a denial and an interrupt win over it', () => {
+  const base = worked({ kind: 'toolCall' });
+  assert.equal(view(emptyModel(), applyEvent(endAt(base, 5000), { kind: 'stopFailure', message: 'boom' }, 5000)).kind, 'blocked');
+  assert.equal(view(emptyModel(), applyEvent(endAt(base, 5000), { kind: 'permissionDenied', tool: 'Bash' }, 5000)).kind, 'blocked');
+  assert.equal(view(emptyModel(), applyEvent(base, { kind: 'turnComplete', isAborted: true, answer: '' }, 5000)).kind, 'paused');
+});
+
+test('no list: the clock of a running turn counts from that turn, not from the first one', () => {
+  const first = endAt(worked({ kind: 'toolCall' }), 11_000);
+  const second = applyEvent(first, { kind: 'turnStart' }, 100_000);
+  const v = view(emptyModel(), second, emptyBackground(), 105_000);
+  assert.equal(v.kind === 'working' && v.elapsedMs, 5000);
+});
+
+test('disabled hides even a Done row', () => {
+  const s = applyEvent(endAt(worked({ kind: 'toolCall' }), 5000), { kind: 'setDisabled', value: true });
+  assert.deepEqual(view(emptyModel(), s), { kind: 'hidden' });
 });
 
 test('an error with no list is still blocked', () => {
