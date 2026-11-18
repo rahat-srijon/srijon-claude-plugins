@@ -14,8 +14,8 @@
     {
       "name": "pace-maker",
       "source": "./plugins/pace-maker",
-      "description": "A per-conversation progress band for Claude Code: one row above the prompt with task progress, what Claude is doing now, and why it stopped, at zero model tokens by default.",
-      "version": "0.2.0"
+      "description": "A per-conversation progress band for Claude Code: two rows above the prompt with task progress, what Claude is doing now, and why it stopped, at zero model tokens by default.",
+      "version": "0.3.0"
     }
   ]
 }

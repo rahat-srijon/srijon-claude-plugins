@@ -7,7 +7,7 @@ A Claude Code plugin marketplace by Md. Rahat Islam.
 | Plugin | What it does |
 | --- | --- |
 | [claudio-notify](plugins/claudio-notify) | Audio notifications: distinct, customizable sounds when tasks finish, subagents start or stop, Claude asks a question, needs permission, or you near a usage limit, per model. |
-| [pace-maker](plugins/pace-maker) | A per-conversation progress band (a mod): one row above the prompt showing how far the current task is, what Claude is doing now, and why it stopped, at zero model tokens by default. |
+| [pace-maker](plugins/pace-maker) | A per-conversation progress band (a mod): two rows above the prompt showing how far the current task is, what Claude is doing now, and why it stopped, at zero model tokens by default. |
 
 ## Install
 

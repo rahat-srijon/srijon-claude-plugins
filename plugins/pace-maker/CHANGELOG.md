@@ -4,6 +4,28 @@ All notable changes to pace-maker are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-18
+
+### Added
+
+- A smooth progress bar across the full width of the band: a Raster cell bar on the terminal (sub-cell fill edge, gradient, dim track) and an Svg bar on the desktop app, VS Code and mobile. The plain text bar stays as the fallback.
+- The final row stays after a turn that did work (a tool call, a task list, or 8 seconds or more) until the next prompt, in every client. With no task list a normal end is Done with a full bar.
+- Fixed bar colors per state: violet-blue for progress and working, teal-green for done, amber for waiting, red for blocked, cyan-blue for paused, grey for stopped.
+- The determinate fill eases toward its target instead of jumping.
+- `node design/preview.mjs` writes an HTML preview of every state's bar at three widths.
+
+### Changed
+
+- The band is two rows: one non-wrapping text line (icon, state and step label on the left; count, percentage and elapsed time on the right) over the bar.
+- A plain-text question ending in `?` is Waiting for your answer with or without a task list.
+- `barStyle` defaults to `smooth`; `blocks`, `thin`, `dots` and `ascii` now force the plain text bar.
+- A quick chat reply with no tool call and under 8 seconds still leaves the band hidden.
+
+### Removed
+
+- The `barWidth` setting: the bar fills the width of the band.
+- The one-row layout and the hiding of the band when a turn ends without a task list.
+
 ## [0.2.0] - 2026-11-18
 
 ### Added
@@ -43,5 +65,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Settings for the display (bar or text), the bar style and width, the fields beside the bar, the animation and the VS Code status.
 - Two opt-in "Uses AI" settings, both off by default: explain why a turn stopped (one small-model call per unexplained stop) and ask Claude to keep a task list (one line in the system prompt).
 
+[0.3.0]: https://github.com/rahat-srijon/srijon-claude-plugins/releases/tag/pace-maker-v0.3.0
 [0.2.0]: https://github.com/rahat-srijon/srijon-claude-plugins/releases/tag/pace-maker-v0.2.0
 [0.1.0]: https://github.com/rahat-srijon/srijon-claude-plugins/releases/tag/pace-maker-v0.1.0
