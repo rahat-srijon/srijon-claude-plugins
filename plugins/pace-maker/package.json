@@ -1,8 +1,8 @@
 {
   "name": "pace-maker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "A per-conversation progress band for Claude Code: task progress, what Claude is doing now, and why it stopped, at zero model tokens.",
+  "description": "A per-conversation progress band for Claude Code: one row above the prompt with task progress, what Claude is doing now, and why it stopped, at zero model tokens by default.",
   "type": "module",
   "license": "MIT",
   "author": "Md. Rahat Islam",

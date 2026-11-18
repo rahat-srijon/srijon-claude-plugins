@@ -4,6 +4,30 @@ All notable changes to pace-maker are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-18
+
+### Added
+
+- One row above the prompt on every surface (terminal, desktop and VS Code), drawn by the plugin with a hand-drawn glyph bar. Bar styles `blocks`, `thin`, `dots` and `ascii`, 10 to 40 cells wide.
+- A bar whenever a turn runs: determinate when a task list exists, a sliding indeterminate bar when it does not, never an invented fraction.
+- Settings as plugin options shown in `/config`: `enabled`, `barStyle`, `barWidth`, `showCount`, `showPercent`, `showLabel`, `showElapsed`, `showSubagents` and `explainStop`.
+- Engine tests that mount the band on the terminal, desktop and VS Code surfaces.
+
+### Changed
+
+- The `Paused` state uses the `planMode` theme token and the Blocked icon is `✖`.
+- The signals for permission prompts, denied permissions, API errors, usage limits, plans and background-task ends now come from `tool.check`, `tool.call`, `turn.complete` and `session.append`.
+- The Working and Stopped states also show the sliding or held bar.
+- `explainStop` is the only AI feature and stays off by default.
+
+### Removed
+
+- Every `classic.*` hook and `prompt.compose`. A plugin that runs above pace-maker skips them and Claude Code printed a notice for each.
+- The "Ask Claude to keep a task list" option, which depended on `prompt.compose`.
+- The settings page, its local Node server, the config file and `/pace config`.
+- The native progress element, the spinner suffix, the status-line entry and the VS Code fallback.
+- The `display`, `animation`, `showOnVscodeStatus` settings and the `native` bar style.
+
 ## [0.1.0] - 2026-11-17
 
 ### Added
@@ -19,4 +43,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Settings for the display (bar or text), the bar style and width, the fields beside the bar, the animation and the VS Code status.
 - Two opt-in "Uses AI" settings, both off by default: explain why a turn stopped (one small-model call per unexplained stop) and ask Claude to keep a task list (one line in the system prompt).
 
+[0.2.0]: https://github.com/rahat-srijon/srijon-claude-plugins/releases/tag/pace-maker-v0.2.0
 [0.1.0]: https://github.com/rahat-srijon/srijon-claude-plugins/releases/tag/pace-maker-v0.1.0
