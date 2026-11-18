@@ -11,17 +11,24 @@ export type View =
   | { kind: 'progress'; done: number; total: number; fraction: number; label?: string; elapsedMs: number }
   | { kind: 'working'; detail?: string; elapsedMs: number; subagents: number }
   | { kind: 'stopped'; done: number; total: number; left: number; reason?: string }
-  | { kind: 'done'; done: number; total: number; durationMs: number }
+  | { kind: 'done'; done: number; total: number; durationMs: number } // total 0: a turn that worked with no task list
   | { kind: 'waiting'; why: 'permission' | 'question' | 'usage-limit'; detail?: string; done: number; total: number; running: boolean }
   | { kind: 'blocked'; why: 'error' | 'denied' | 'dependency'; detail?: string; count?: number; done: number; total: number; running: boolean }
   | { kind: 'paused'; why: 'interrupt' | 'plan' | 'command'; detail?: string; done: number; total: number; running: boolean };
 
-/** Picks exactly one view. Precedence: off, permission, pause command, running, colored stop reasons, background, done, stopped, hidden. */
+/** A turn with no tool call and no list counts as work only from this long (a quick chat reply leaves the band hidden). */
+export const WORK_MIN_MS = 8000;
+
+/** Picks exactly one view. Precedence: off, permission, pause command, running, colored stop reasons (a question included, list or not), background, done, stopped, then Done for a list-less turn that worked, else hidden. */
 export function deriveState(progress: Model, state: SessionState, bg: Background, now: number): View {
   if (state.disabled) return { kind: 'hidden' };
   const { done, total } = counts(progress);
   const sum = backgroundSummary(bg);
-  const elapsedMs = state.startedAt === null ? 0 : now - state.startedAt;
+  const listed = hasList(progress);
+  // A task list's clock runs from the run's start; with no list it is the turn's own.
+  const since = listed ? state.startedAt : state.turnStartedAt;
+  const elapsedMs = since === null ? 0 : Math.max(0, now - since);
+  const turnMs = state.turnStartedAt !== null && state.endedAt !== null ? Math.max(0, state.endedAt - state.turnStartedAt) : 0;
   const withDetail = <T extends object>(v: T, detail: string | undefined): T =>
     detail === undefined ? v : { ...v, detail };
   const working = (): View => withDetail({ kind: 'working' as const, elapsedMs, subagents: sum.agents }, sum.label);
@@ -60,18 +67,23 @@ export function deriveState(progress: Model, state: SessionState, bg: Background
   }
   if (state.planWaiting) return { kind: 'paused', why: 'plan', done, total, running };
   if (state.lastEnd?.isAborted) return { kind: 'paused', why: 'interrupt', done, total, running };
-  if (state.lastEnd && left > 0 && endsWithQuestion(state.lastEnd.answer)) {
+  if (state.lastEnd && endsWithQuestion(state.lastEnd.answer)) {
     return { kind: 'waiting', why: 'question', done, total, running };
   }
 
   if (sum.total > 0) return working();
-  if (hasList(progress) && isComplete(progress)) {
+  if (listed && isComplete(progress)) {
     const durationMs = state.startedAt !== null && state.endedAt !== null ? state.endedAt - state.startedAt : 0;
     return { kind: 'done', done, total, durationMs };
   }
   // No signal explains a stop with tasks left: the reason is only the opt-in AI one (stopReason), never invented here.
-  if (hasList(progress)) {
+  if (listed) {
     return state.stopReason ? { kind: 'stopped', done, total, left, reason: state.stopReason } : { kind: 'stopped', done, total, left };
+  }
+  // No list: a turn that did work (a tool call, or 8 s or more) leaves a Done row until the next turn starts.
+  // A conversation where nothing has ended yet, or a quick reply that used no tool, stays hidden.
+  if (state.lastEnd !== null && (state.toolCalls > 0 || turnMs >= WORK_MIN_MS)) {
+    return { kind: 'done', done: 0, total: 0, durationMs: turnMs };
   }
   return { kind: 'hidden' };
 }

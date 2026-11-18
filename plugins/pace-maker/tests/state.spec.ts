@@ -15,12 +15,26 @@ function deepFreeze<T>(o: T): T {
 
 test('emptyState is idle and enabled', () => {
   const s = emptyState();
-  assert.equal(s.shape, 'state-2');
+  assert.equal(s.shape, 'state-3');
   assert.equal(s.disabled, false);
   assert.equal(s.running, false);
   assert.equal(s.startedAt, null);
   assert.equal(s.lastEnd, null);
   assert.equal(s.stopReason, null);
+});
+
+test('toolCall counts calls since the turn started; turnStart resets the count and stamps the turn', () => {
+  const s = run([{ kind: 'turnStart' }, { kind: 'toolCall' }, { kind: 'toolCall' }], emptyState(), 1000);
+  assert.equal(s.toolCalls, 2);
+  assert.equal(s.turnStartedAt, 1000);
+  const again = applyEvent(s, { kind: 'turnStart' }, 9000);
+  assert.equal(again.toolCalls, 0);
+  assert.equal(again.turnStartedAt, 9000);
+  assert.equal(again.startedAt, 1000);
+  // A turn ending keeps the count (the view reads it), and resetRun does not touch it.
+  assert.equal(applyEvent(s, { kind: 'turnComplete', isAborted: false, answer: '' }, 3000).toolCalls, 2);
+  assert.equal(applyEvent(s, { kind: 'resetRun' }).toolCalls, 2);
+  assert.equal(emptyState().toolCalls, 0);
 });
 
 test('stopReason stores the text, and turnStart and resetRun clear it', () => {
