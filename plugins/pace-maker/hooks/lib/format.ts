@@ -1,29 +1,58 @@
-// Turns a View into the plain data a renderer draws: one text line, an icon, a theme color key and an optional bar.
-// Pure and JSX-free. Colors are theme tokens only (never a raw color); undefined means the engine's own accent.
+// Turns a View into the plain data one band row is drawn from: an icon, a state text, a theme token, an optional bar and a tail.
+// Pure and JSX-free. Tones are theme tokens only (never a raw color). The bar is drawn from glyphs, not a native element.
 
 import type { View } from './view.ts';
 import type { BarStyle, Settings } from './settings.ts';
 
-export type Formatted = {
-  kind: View['kind'];
-  /** The state's glyph; empty for a bar-led progress line, where the bar is the mark. Already part of `text`. */
-  icon: string;
-  /** A theme token such as 'warning', or undefined for the engine's accent. */
-  color: string | undefined;
-  /** The one-line string, icon included, with no line breaks. */
-  text: string;
-  /** A glyph bar of barWidth cells. */
-  glyphBar?: string;
+/** A run of bar cells drawn in one colour: the tone (`used`) or the dim track. */
+export type BarPart = { text: string; used: boolean };
+
+export type Bar = {
+  style: BarStyle;
+  /** The filled cells, joined. */
+  used: string;
+  /** The empty cells, joined. */
+  rest: string;
+  /** determinate: `used` is the finished share; sliding: a short segment that never implies a fraction. */
+  mode: 'determinate' | 'sliding';
+  /** False for a sliding bar held at a fixed position (a turn is waiting or paused with no list). */
+  moving: boolean;
+  /** The ends of the track ('[' and ']' for ascii, empty otherwise), drawn dim. */
+  open: string;
+  close: string;
+  /** The cells in track order as runs, so a sliding segment that wraps round the end is two used runs. */
+  parts: BarPart[];
 };
 
-const COLORS = {
-  working: 'subtle',
-  stopped: 'subtle',
+export type Formatted = {
+  kind: View['kind'];
+  /** The state's glyph. */
+  icon: string;
+  /** A theme token such as 'warning'. */
+  tone: string;
+  /** The state text, without the icon: `Progress`, `Working`, `Waiting for permission: Bash`. */
+  text: string;
+  bar: Bar | null;
+  /** The trailing details per the show* settings, joined with ` · `; empty when there are none. */
+  tail: string;
+};
+
+const TONES = {
+  progress: 'suggestion',
+  working: 'suggestion',
   done: 'success',
   waiting: 'warning',
   blocked: 'error',
-  paused: 'suggestion',
+  paused: 'planMode',
+  stopped: 'subtle',
 } as const;
+
+const GLYPHS: Record<BarStyle, { used: string; rest: string; open: string; close: string }> = {
+  blocks: { used: '█', rest: '░', open: '', close: '' },
+  thin: { used: '▬', rest: '─', open: '', close: '' },
+  dots: { used: '●', rest: '○', open: '', close: '' },
+  ascii: { used: '#', rest: '-', open: '[', close: ']' },
+};
 
 const SEP = ' · ';
 const DETAIL_MAX = 80;
@@ -56,78 +85,96 @@ export function formatResetTime(resetsAt: string | undefined, now?: number): str
 
 const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 
-/** A glyph bar of exactly `width` cells. Whole cells only, so nothing is drawn that is not done yet. */
-export function glyphBar(fraction: number, style: BarStyle, width: number): string {
-  const w = Math.max(3, Math.round(width));
-  const f = clamp01(fraction);
-  const fill = (cells: number): number => (f >= 1 ? cells : Math.floor(f * cells));
-  switch (style) {
-    case 'blocks':
-      return '█'.repeat(fill(w)) + '░'.repeat(w - fill(w));
-    case 'thin':
-      return '━'.repeat(fill(w)) + '─'.repeat(w - fill(w));
-    case 'dots':
-      return '●'.repeat(fill(w)) + '○'.repeat(w - fill(w));
-    case 'ascii': {
-      const inner = w - 2;
-      return `[${'#'.repeat(fill(inner))}${'-'.repeat(inner - fill(inner))}]`;
-    }
-  }
-}
-
-/** Where a bar shown at `from` stands `elapsedMs` into a tween to `to` (ease-out, `durationMs` long). */
-export function easeValue(from: number, to: number, elapsedMs: number, durationMs: number = 300): number {
-  if (!(durationMs > 0) || elapsedMs >= durationMs) return to;
-  if (!(elapsedMs > 0)) return from;
-  const p = elapsedMs / durationMs;
-  return from + (to - from) * (1 - (1 - p) * (1 - p));
-}
-
 const stepsWord = (n: number): string => (n === 1 ? 'step' : 'steps');
 const agentsWord = (n: number): string => (n === 1 ? 'subagent' : 'subagents');
 
+const trackWidth = (width: number): number => (Number.isFinite(width) ? Math.max(3, Math.round(width)) : 20);
+
+function makeBar(style: BarStyle, mode: Bar['mode'], moving: boolean, flags: boolean[]): Bar {
+  const g = GLYPHS[style];
+  const parts: BarPart[] = [];
+  for (const on of flags) {
+    const last = parts[parts.length - 1];
+    if (last !== undefined && last.used === on) last.text += on ? g.used : g.rest;
+    else parts.push({ text: on ? g.used : g.rest, used: on });
+  }
+  const n = flags.filter(Boolean).length;
+  return { style, used: g.used.repeat(n), rest: g.rest.repeat(flags.length - n), mode, moving, open: g.open, close: g.close, parts };
+}
+
+/** A determinate bar of `width` cells with round(fraction * width) filled (never a full bar before the work is done). */
+export function determinateBar(fraction: number, style: BarStyle, width: number): Bar {
+  const w = trackWidth(width);
+  const f = clamp01(fraction);
+  let filled = Math.round(f * w);
+  if (f < 1 && filled >= w) filled = w - 1;
+  return makeBar(style, 'determinate', false, Array.from({ length: w }, (_, i) => i < filled));
+}
+
+/** The length of the sliding segment: about a fifth of the track, at least two cells. */
+export const segmentLength = (width: number): number => {
+  const w = trackWidth(width);
+  return Math.min(w - 1, Math.max(2, Math.round(w / 5)));
+};
+
 /**
- * Formats a view for drawing. `now` only lets a reset time that is already past be left out.
- * `shown` is the fraction a smoothed bar is drawn at instead of the real one (progress only).
+ * An indeterminate bar: a segment that starts at cell `tick mod width` and wraps round the end, one cell per tick.
+ * With `frozen` it stands still in the middle of the track instead. It never implies a fraction.
  */
-export function formatView(view: View, settings: Settings, now?: number, shown?: number): Formatted | null {
-  const f = { stepCount: settings.showCount, percentage: settings.showPercent, stepLabel: settings.showLabel, elapsed: settings.showElapsed, subagents: settings.showSubagents };
+export function slidingBar(tick: number, style: BarStyle, width: number, frozen = false): Bar {
+  const w = trackWidth(width);
+  const seg = segmentLength(w);
+  const t = Number.isFinite(tick) ? Math.floor(tick) : 0;
+  const pos = frozen ? Math.floor((w - seg) / 2) : ((t % w) + w) % w;
+  return makeBar(style, 'sliding', !frozen, Array.from({ length: w }, (_, i) => (i - pos + w) % w < seg));
+}
+
+const pieces = (...p: (string | undefined | false)[]): string => p.filter((x): x is string => typeof x === 'string' && x !== '').join(SEP);
+
+/**
+ * Formats a view as one band row. `tick` counts 250 ms steps and only moves a sliding bar; `now` only lets a reset
+ * time that is already past be left out. Returns null for a hidden view.
+ */
+export function formatView(view: View, settings: Settings, tick: number, now?: number): Formatted | null {
+  const { barStyle: style, barWidth: width } = settings;
+  const count = (done: number, total: number): string | false => settings.showCount && total > 0 && `${done}/${total}`;
+  const percent = (fraction: number): string | false => settings.showPercent && `${Math.floor(clamp01(fraction) * 100)}%`;
+  // The bar of a view that is not progress or working: the list's share, a frozen slide mid-turn, or none.
+  const held = (done: number, total: number, running: boolean): Bar | null =>
+    total > 0 ? determinateBar(done / total, style, width) : running ? slidingBar(tick, style, width, true) : null;
+  const shared = (done: number, total: number): string => pieces(count(done, total), total > 0 && percent(done / total));
+
   switch (view.kind) {
     case 'hidden':
       return null;
 
     case 'progress': {
-      const parts: string[] = [];
-      if (f.stepCount) parts.push(`${view.done}/${view.total}`);
-      const real = clamp01(view.fraction);
-      if (f.percentage) parts.push(`${Math.floor(real * 100)}%`);
-      if (f.stepLabel && view.label !== undefined) parts.push(oneLine(view.label));
-      if (f.elapsed && view.elapsedMs > 0) parts.push(formatElapsed(view.elapsedMs));
-      const body = parts.join(SEP);
-      const out: Formatted = { kind: 'progress', icon: '', color: undefined, text: body };
-      out.glyphBar = glyphBar(shown === undefined ? real : clamp01(shown), settings.barStyle, settings.barWidth);
-      return out;
+      const tail = pieces(
+        count(view.done, view.total),
+        percent(view.fraction),
+        settings.showLabel && view.label !== undefined && oneLine(view.label),
+        settings.showElapsed && view.elapsedMs > 0 && formatElapsed(view.elapsedMs),
+      );
+      return { kind: 'progress', icon: '▶', tone: TONES.progress, text: 'Progress', bar: determinateBar(view.fraction, style, width), tail };
     }
 
     case 'working': {
-      const parts = ['Working'];
-      if (view.detail !== undefined) parts.push(`${oneLine(view.detail)} in background`);
-      if (f.elapsed && view.elapsedMs > 0) parts.push(formatElapsed(view.elapsedMs));
-      if (f.subagents && view.subagents > 0) parts.push(`${view.subagents} ${agentsWord(view.subagents)}`);
-      return { kind: 'working', icon: '●', color: COLORS.working, text: `● ${parts.join(SEP)}` };
+      const tail = pieces(
+        settings.showLabel && view.detail !== undefined && `${oneLine(view.detail)} in background`,
+        settings.showElapsed && view.elapsedMs > 0 && formatElapsed(view.elapsedMs),
+        settings.showSubagents && view.subagents > 0 && `${view.subagents} ${agentsWord(view.subagents)}`,
+      );
+      return { kind: 'working', icon: '●', tone: TONES.working, text: 'Working', bar: slidingBar(tick, style, width), tail };
     }
 
     case 'stopped': {
-      const parts = [`Stopped${SEP}${view.left} of ${view.total} ${stepsWord(view.total)} left`];
-      if (view.reason !== undefined) parts.push(oneLine(view.reason));
-      return { kind: 'stopped', icon: '○', color: COLORS.stopped, text: `○ ${parts.join(SEP)}` };
+      const text = pieces(`Stopped${SEP}${view.left} of ${view.total} ${stepsWord(view.total)} left`, view.reason !== undefined && oneLine(view.reason));
+      return { kind: 'stopped', icon: '○', tone: TONES.stopped, text, bar: held(view.done, view.total, false), tail: shared(view.done, view.total) };
     }
 
     case 'done': {
-      const parts = ['Done'];
-      if (f.stepCount) parts.push(`${view.done}/${view.total}`);
-      if (f.elapsed && view.durationMs > 0) parts.push(formatElapsed(view.durationMs));
-      return { kind: 'done', icon: '✓', color: COLORS.done, text: `✓ ${parts.join(SEP)}` };
+      const tail = pieces(count(view.done, view.total), settings.showElapsed && view.durationMs > 0 && formatElapsed(view.durationMs));
+      return { kind: 'done', icon: '✓', tone: TONES.done, text: 'Done', bar: determinateBar(1, style, width), tail };
     }
 
     case 'waiting': {
@@ -140,7 +187,7 @@ export function formatView(view: View, settings: Settings, now?: number, shown?:
         const at = formatResetTime(view.detail, now);
         text = `Waiting${SEP}${at === undefined ? 'usage limit' : `usage limit, resets ${at}`}`;
       }
-      return { kind: 'waiting', icon: '⏸', color: COLORS.waiting, text: `⏸ ${text}` };
+      return { kind: 'waiting', icon: '⏸', tone: TONES.waiting, text, bar: held(view.done, view.total, view.running), tail: shared(view.done, view.total) };
     }
 
     case 'blocked': {
@@ -153,20 +200,15 @@ export function formatView(view: View, settings: Settings, now?: number, shown?:
         const n = view.count ?? 1;
         text = `${n} ${n === 1 ? 'task waits' : 'tasks wait'} on unmet dependencies`;
       }
-      return { kind: 'blocked', icon: '⛔', color: COLORS.blocked, text: `⛔ Blocked${SEP}${text}` };
+      return { kind: 'blocked', icon: '✖', tone: TONES.blocked, text: `Blocked${SEP}${text}`, bar: held(view.done, view.total, view.running), tail: shared(view.done, view.total) };
     }
 
     case 'paused': {
-      const steps = view.total > 0 ? `${view.done}/${view.total}` : undefined;
-      let parts: string[];
-      if (view.why === 'plan') parts = ['Plan ready for approval'];
-      else if (view.why === 'interrupt') parts = steps === undefined ? ['Paused by you'] : ['Paused by you', steps];
-      else {
-        parts = ['Paused'];
-        if (view.detail !== undefined) parts.push(oneLine(view.detail, 40));
-        if (steps !== undefined) parts.push(steps);
-      }
-      return { kind: 'paused', icon: '⏸', color: COLORS.paused, text: `⏸ ${parts.join(SEP)}` };
+      let text: string;
+      if (view.why === 'plan') text = 'Plan ready for approval';
+      else if (view.why === 'interrupt') text = 'Paused by you';
+      else text = pieces('Paused', view.detail !== undefined && oneLine(view.detail, 40));
+      return { kind: 'paused', icon: '⏸', tone: TONES.paused, text, bar: held(view.done, view.total, view.running), tail: shared(view.done, view.total) };
     }
   }
 }

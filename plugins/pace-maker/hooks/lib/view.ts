@@ -12,9 +12,9 @@ export type View =
   | { kind: 'working'; detail?: string; elapsedMs: number; subagents: number }
   | { kind: 'stopped'; done: number; total: number; left: number; reason?: string }
   | { kind: 'done'; done: number; total: number; durationMs: number }
-  | { kind: 'waiting'; why: 'permission' | 'question' | 'usage-limit'; detail?: string; done: number; total: number }
-  | { kind: 'blocked'; why: 'error' | 'denied' | 'dependency'; detail?: string; count?: number; done: number; total: number }
-  | { kind: 'paused'; why: 'interrupt' | 'plan' | 'command'; detail?: string; done: number; total: number };
+  | { kind: 'waiting'; why: 'permission' | 'question' | 'usage-limit'; detail?: string; done: number; total: number; running: boolean }
+  | { kind: 'blocked'; why: 'error' | 'denied' | 'dependency'; detail?: string; count?: number; done: number; total: number; running: boolean }
+  | { kind: 'paused'; why: 'interrupt' | 'plan' | 'command'; detail?: string; done: number; total: number; running: boolean };
 
 /** Picks exactly one view. Precedence: off, permission, pause command, running, colored stop reasons, background, done, stopped, hidden. */
 export function deriveState(progress: Model, state: SessionState, bg: Background, now: number): View {
@@ -26,12 +26,13 @@ export function deriveState(progress: Model, state: SessionState, bg: Background
     detail === undefined ? v : { ...v, detail };
   const working = (): View => withDetail({ kind: 'working' as const, elapsedMs, subagents: sum.agents }, sum.label);
   const left = total - done;
+  const running = state.running;
 
   if (state.permission) {
-    return withDetail({ kind: 'waiting' as const, why: 'permission' as const, done, total }, state.permission.tool || undefined);
+    return withDetail({ kind: 'waiting' as const, why: 'permission' as const, done, total, running }, state.permission.tool || undefined);
   }
   if (state.pause) {
-    return withDetail({ kind: 'paused' as const, why: 'command' as const, done, total }, state.pause.reason || undefined);
+    return withDetail({ kind: 'paused' as const, why: 'command' as const, done, total, running }, state.pause.reason || undefined);
   }
   if (state.running) {
     if (!hasList(progress)) return working();
@@ -41,26 +42,26 @@ export function deriveState(progress: Model, state: SessionState, bg: Background
   }
 
   if (state.error) {
-    return withDetail({ kind: 'blocked' as const, why: 'error' as const, done, total }, state.error.message || state.error.code);
+    return withDetail({ kind: 'blocked' as const, why: 'error' as const, done, total, running }, state.error.message || state.error.code);
   }
   if (state.denied) {
-    return withDetail({ kind: 'blocked' as const, why: 'denied' as const, done, total }, state.denied.tool || undefined);
+    return withDetail({ kind: 'blocked' as const, why: 'denied' as const, done, total, running }, state.denied.tool || undefined);
   }
   const waitingOn = blocked(progress);
   if (waitingOn.length > 0 && left > 0) {
     const first = progress.tasks.find((t) => t.id === waitingOn[0]);
     return withDetail(
-      { kind: 'blocked' as const, why: 'dependency' as const, count: waitingOn.length, done, total },
+      { kind: 'blocked' as const, why: 'dependency' as const, count: waitingOn.length, done, total, running },
       first?.subject || undefined,
     );
   }
   if (state.limit) {
-    return withDetail({ kind: 'waiting' as const, why: 'usage-limit' as const, done, total }, state.limit.resetsAt);
+    return withDetail({ kind: 'waiting' as const, why: 'usage-limit' as const, done, total, running }, state.limit.resetsAt);
   }
-  if (state.planWaiting) return { kind: 'paused', why: 'plan', done, total };
-  if (state.lastEnd?.isAborted) return { kind: 'paused', why: 'interrupt', done, total };
+  if (state.planWaiting) return { kind: 'paused', why: 'plan', done, total, running };
+  if (state.lastEnd?.isAborted) return { kind: 'paused', why: 'interrupt', done, total, running };
   if (state.lastEnd && left > 0 && endsWithQuestion(state.lastEnd.answer)) {
-    return { kind: 'waiting', why: 'question', done, total };
+    return { kind: 'waiting', why: 'question', done, total, running };
   }
 
   if (sum.total > 0) return working();

@@ -1,12 +1,5 @@
 import { test, expect, mock } from 'claude-code/testing'
-import { watchState } from './kit'
-
-const band = {
-  plugin: 'pace-maker',
-  surface: 'terminal',
-  component: 'AbovePrompt',
-  props: { hasSurvey: false, isCollapsed: false, isWorking: true, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 11 } },
-} as never
+import { drawn, watchState } from './kit'
 
 const done = (turnId: string, extra: Record<string, unknown> = {}) =>
   ({ text: '', answer: 'Finished the first part.', durationMs: 1, isAborted: false, turnId, reason: 'answer', ...extra }) as never
@@ -35,12 +28,6 @@ const reply = (text: string) => ({ isAnswered: true, text, usage: { input_tokens
 const settle = () => new Promise((r) => (globalThis as any).setTimeout(r, 20))
 
 const create = ($: any, subject: string) => $.tool.call({ tool: 'TaskCreate', subject, description: 'd' })
-const drawn = async ($: any) => {
-  const ui = await $.ui.mount(band)
-  const found = await ui.find({ type: 'Text' })
-  await ui.unmount()
-  return found?.text as string | undefined
-}
 
 /** One turn that leaves the list open: a session with two tasks, then the turn ends normally. */
 async function stopWithTasksLeft($: any, answer = 'Finished the first part.') {
