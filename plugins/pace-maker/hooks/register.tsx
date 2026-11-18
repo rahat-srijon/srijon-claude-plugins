@@ -7,8 +7,9 @@ import { applyTaskList, applyToolEvent, emptyModel, isComplete, type ToolEvent }
 import { applyEvent, emptyState, type StateEvent } from './lib/state.ts';
 import { deriveState, type View } from './lib/view.ts';
 import { easeValue, formatView, type Formatted } from './lib/format.ts';
-import { EXPLAIN_REQUEST, TASK_LIST_LINE, TASK_LIST_SECTION_ID, buildExplainPrompt, clampReason, shouldAskForTaskList, shouldExplain } from './lib/explain.ts';
-import { CONFIG_FILE, dataDirFor, defaultSettings, parseSettingsText, type Settings } from './lib/settings.ts';
+import { EXPLAIN_REQUEST, buildExplainPrompt, clampReason, shouldExplain } from './lib/explain.ts';
+import { failureEvent, isDeniedResult } from './lib/failure.ts';
+import { defaultSettings, normalizeSettings, type Settings } from './lib/settings.ts';
 
 // The per-conversation state lives in $.state (a hot reload keeps it); the engine's scan needs the atoms spelled in this file.
 const progress = atom({ plugin: 'pace-maker', key: 'progress' } as const, emptyModel(), { shape: 'progress-1' });
@@ -31,58 +32,14 @@ const ENDED = /^(completed|failed|killed|stopped|cancelled|canceled|error|timeou
 
 // Tool-use ids whose permission prompt this plugin raised; cleared when that call completes.
 const pending = new Set<string>();
-// A prompt raised by a classic Notification has no call id: cleared by the next completed tool call.
-let notified = false;
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-// The global settings, cached: render hooks call getSettings() on every draw, so it never does I/O. The file is read at
-// session.start, at each main-loop turn.start and on every /pace command (loadSettings), never in tool.call or a render.
+// The settings: the manifest's userConfig values, read once per module load (a change in /config reloads the module).
 let cached: Settings = defaultSettings();
 
 export function getSettings(): Settings {
   return cached;
-}
-
-/** Reads <data dir>/config.json into the cache (defaults on any trouble) and redraws when something changed. Never throws. */
-async function loadSettings($: Dollar): Promise<void> {
-  let next = defaultSettings();
-  try {
-    const override = await $.env.get('PACE_MAKER_DATA_DIR');
-    const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'));
-    const dir = dataDirFor(override, home);
-    if (dir !== undefined) next = parseSettingsText(await $.fs.read(`${dir}/${CONFIG_FILE}`));
-  } catch {
-    next = defaultSettings();
-  }
-  try {
-    if (JSON.stringify(next) === JSON.stringify(cached)) return;
-    cached = next;
-    $.ui.invalidate('ui.render');
-    poke($);
-  } catch { /* ignore */ }
-}
-
-/** /pace config: starts the settings page through the Node launcher and answers with its URL in one line. */
-async function openSettingsPage($: Dollar): Promise<string> {
-  try {
-    const ran = await $.process.run(['node', `${$.plugin.root}/scripts/cli.js`, 'config'], { timeoutMs: 20_000 });
-    const url = /https?:\/\/\S+/.exec(ran.stdout)?.[0];
-    if (ran.exitCode === 0 && url !== undefined) return `Settings page: ${url}`;
-    const why = (ran.stderr.split('\n').find((l) => l.trim() !== '') ?? '').replace(/^pace-maker:\s*/, '').trim();
-    return couldNotOpen($, why);
-  } catch {
-    return couldNotOpen($, '');
-  }
-}
-
-/** One line that tells the user the command to run in a terminal; the reason is added only while the line stays short. */
-function couldNotOpen($: Dollar, why: string): string {
-  const base = 'Could not open the settings page from this window';
-  const manual = `. Run in a terminal: node "${$.plugin.root}/scripts/cli.js" config`;
-  const withReason = why === '' ? '' : `${base} (${clip(why, 60)})${manual}`;
-  const line = withReason !== '' && withReason.length <= 220 ? withReason : `${base}${manual}`;
-  return line.replace(/\s*\n\s*/g, ' ');
 }
 
 // ---- Drawing ---------------------------------------------------------------------------------------------------
@@ -100,14 +57,14 @@ let lastStatus: string | undefined;
 const BAND_SURFACES = new Set(['terminal', 'desktop', 'mobile']);
 
 /** The bar fraction to draw at `now`: the real one, or an eased step toward it. Never invents progress inside a step. */
-function displayedFraction(view: View, settings: Settings, now: number): number | undefined {
+function displayedFraction(view: View, now: number): number | undefined {
   if (view.kind !== 'progress') {
     shown = null;
     tween = null;
     return undefined;
   }
   const target = view.fraction;
-  if (settings.animation !== 'smooth' || shown === null) {
+  if (shown === null) {
     shown = target;
     tween = null;
     return target;
@@ -175,7 +132,7 @@ async function refresh($: Dollar): Promise<void> {
     const surfaces = await $.session.surfaces();
     const vscode = surfaces.length > 0 ? surfaces.includes('vscode') && !surfaces.some((x) => BAND_SURFACES.has(x)) : vscodeSeen;
     let text: string | undefined;
-    if (vscode && settings.enabled && settings.showOnVscodeStatus && view.kind !== 'done') {
+    if (vscode && settings.enabled && view.kind !== 'done') {
       text = formatView(view, settings, now)?.text;
     }
     if (text !== lastStatus && (vscode || lastStatus !== undefined)) {
@@ -278,7 +235,8 @@ async function observeBackground($: Dollar, e: Rec, ran: Rec): Promise<void> {
   }
 }
 
-export const register: Register = (on) => {
+export const register: Register = (on, options) => {
+  cached = normalizeSettings(options);
   // The band above the prompt (terminal, desktop, mobile). Reads only; any failure falls back to the engine's own (nothing).
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     let f: Formatted | null = null;
@@ -286,21 +244,18 @@ export const register: Register = (on) => {
       const settings = getSettings();
       if (e.props.hasSurvey || !settings.enabled) return next(e);
       const { view, now } = await currentView($);
-      f = formatView(view, settings, now, displayedFraction(view, settings, now));
+      f = formatView(view, settings, now, displayedFraction(view, now));
       syncTimers($, view, settings);
     } catch {
       f = null;
     }
     if (f === null) return next(e);
     try {
-      const { Box, Text, Progress } = $.ui.resolve(e);
+      const { Box, Text } = $.ui.resolve(e);
       const glyph = f.glyphBar === undefined ? '' : `${f.glyphBar} `;
       return (
         <Box flexDirection="column" width={e.props.bodyColumns}>
           <Text color={f.color} wrap="truncate-end">{`${glyph}${f.text}`}</Text>
-          {f.bar === undefined ? null : (
-            <Progress label={f.bar.label} value={f.bar.value} max={f.bar.max} valueText={f.bar.valueText} />
-          )}
         </Box>
       );
     } catch {
@@ -314,7 +269,7 @@ export const register: Register = (on) => {
     vscodeSeen = true;
     try {
       const settings = getSettings();
-      if (!settings.enabled || !settings.showOnVscodeStatus) return next(e);
+      if (!settings.enabled) return next(e);
       const { view, now } = await currentView($);
       const text = formatView(view, settings, now)?.text;
       if (text === undefined) return next(e);
@@ -327,7 +282,7 @@ export const register: Register = (on) => {
   // Every tool call: pass it on, then observe the few tools that matter. Tools we ignore return at once.
   on('tool.call', async ($, e, next) => {
     const tool = e.tool as string;
-    if (!WATCHED.has(tool) && pending.size === 0 && !notified) return next(e);
+    if (!WATCHED.has(tool) && pending.size === 0) return next(e);
     const call = e as unknown as Rec;
     const isMain = call.agentId === undefined;
     const id = text(call.tool_use_id);
@@ -344,17 +299,18 @@ export const register: Register = (on) => {
     } finally {
       try {
         const wasPending = id !== undefined && pending.delete(id);
-        if (asked || notified || wasPending) {
-          notified = false;
+        if (asked || wasPending) {
           await setState($, { kind: 'permissionResolved' });
         }
       } catch { /* ignore */ }
     }
     try {
       const r = ran as unknown as Rec;
+      // A refused call (a person said no, or a hook did) is a denied permission, except where the refusal is the tool's own answer.
+      if (isDeniedResult(r) && isMain && tool !== 'AskUserQuestion' && tool !== 'ExitPlanMode') await setState($, { kind: 'permissionDenied', tool });
       if (PROGRESS_TOOLS.has(tool)) await observeProgress($, call, r);
       else if (tool === 'ExitPlanMode') {
-        if (r.deny === undefined && isMain) await setState($, { kind: 'planWaiting' });
+        if (!isDeniedResult(r) && isMain) await setState($, { kind: 'planWaiting' });
       } else if (WATCHED.has(tool)) await observeBackground($, call, r);
     } catch { /* ignore */ }
     return ran;
@@ -367,46 +323,9 @@ export const register: Register = (on) => {
       if (e.tool_use_id !== undefined && ran.decision === 'ask' && e.approver !== undefined) {
         pending.add(e.tool_use_id);
         await setState($, { kind: 'permissionPrompt', tool: e.tool });
-      }
-    } catch { /* ignore */ }
-    return ran;
-  });
-
-  // Second signal for the permission prompt; a plugin above may bypass classic hooks, so this is never the only one.
-  on('classic.Notification', async ($, e, next) => {
-    const ran = await next(e);
-    try {
-      if (e.notification_type === 'permission_prompt') {
-        const st = await read($, session);
-        if (st.running && st.permission === null) {
-          const m = /\buse\s+(\S+?)[.:]?(?:\s|$)/i.exec(e.message ?? '');
-          notified = true;
-          await setState($, { kind: 'permissionPrompt', tool: m?.[1] ?? 'a tool' });
-        }
-      }
-    } catch { /* ignore */ }
-    return ran;
-  });
-
-  on('classic.PermissionDenied', async ($, e, next) => {
-    const ran = await next(e);
-    try {
-      notified = false;
-      pending.delete(e.tool_use_id);
-      await setState($, { kind: 'permissionDenied', tool: e.tool_name });
-    } catch { /* ignore */ }
-    return ran;
-  });
-
-  on('classic.StopFailure', async ($, e, next) => {
-    const ran = await next(e);
-    try {
-      const details = e.error_details ?? e.last_assistant_message ?? '';
-      if (e.error === 'rate_limit') {
-        const at = /\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?/.exec(details)?.[0];
-        await setState($, at === undefined ? { kind: 'usageLimit' } : { kind: 'usageLimit', resetsAt: at });
-      } else {
-        await setState($, { kind: 'stopFailure', code: e.error, message: clip(details || e.error, 120) });
+      } else if (e.tool_use_id !== undefined && e.agentId === undefined && ran.decision === 'deny') {
+        pending.delete(e.tool_use_id);
+        await setState($, { kind: 'permissionDenied', tool: e.tool });
       }
     } catch { /* ignore */ }
     return ran;
@@ -416,7 +335,6 @@ export const register: Register = (on) => {
   on('turn.start', async ($, e, next) => {
     const ran = await next(e);
     if (e.agentId !== undefined) return ran;
-    await loadSettings($);
     cancelExplain();
     try {
       await setState($, { kind: 'turnStart' }, await $.clock.now());
@@ -429,22 +347,11 @@ export const register: Register = (on) => {
     if (e.agentId !== undefined) return ran;
     try {
       await setState($, { kind: 'turnComplete', isAborted: e.isAborted, answer: e.answer }, await $.clock.now());
-      if (getSettings().ai.explainStop && shouldExplain((await currentView($)).view, getSettings())) void explainStop($, e.answer);
+      const fail = failureEvent(e);
+      if (fail !== null) await setState($, fail);
+      if (shouldExplain((await currentView($)).view, getSettings())) void explainStop($, e.answer);
     } catch { /* ignore */ }
     return ran;
-  });
-
-  // Opt-in: one short line, appended last at session scope, only while a task tool is offered. Off: exactly what next(e) returned.
-  on('prompt.compose', async ($, e, next) => {
-    const ran = await next(e);
-    try {
-      const settings = getSettings();
-      if (!settings.ai.askForTaskList || !shouldAskForTaskList(settings, e.tools)) return ran;
-      if ((await read($, session)).disabled || ran.sections.some((x) => x.id === TASK_LIST_SECTION_ID)) return ran;
-      return { ...ran, sections: [...ran.sections, { id: TASK_LIST_SECTION_ID, text: TASK_LIST_LINE, scope: 'session' as const }] };
-    } catch {
-      return ran;
-    }
   });
 
   // A task-notification row says a background task ended: <task-id> with a terminal <status>.
@@ -461,36 +368,13 @@ export const register: Register = (on) => {
     return ran;
   });
 
-  // The Stop hook lists what is still in flight: drop anything we track that is no longer there.
-  on('classic.Stop', async ($, e, next) => {
-    const ran = await next(e);
-    try {
-      const live = e.background_tasks;
-      if (Array.isArray(live)) {
-        const ids = new Set(live.map((t) => t.id));
-        const gone = (await read($, bg)).items.filter((i) => !ids.has(i.id));
-        for (const i of gone) await setBg($, { kind: 'ended', id: i.id });
-      }
-    } catch { /* ignore */ }
-    return ran;
-  });
-
-  on('classic.SubagentStop', async ($, e, next) => {
-    const ran = await next(e);
-    try {
-      await setBg($, { kind: 'ended', id: e.agent_id });
-    } catch { /* ignore */ }
-    return ran;
-  });
-
   on('session.start', async ($, e, next) => {
     const ran = await next(e);
-    await loadSettings($);
     try {
       await $.command.register({
         name: 'pace',
         description: 'Control the pace-maker progress band for this conversation',
-        argumentHint: 'on|off|pause <reason>|resume|config',
+        argumentHint: 'on|off|pause <reason>|resume',
       });
     } catch { /* ignore */ }
     return ran;
@@ -508,27 +392,24 @@ export const register: Register = (on) => {
   // /pace: answered here with one short line (the model reads a plugin command's text on its next request).
   on('command.run', { command: 'pace' }, async ($, e) => {
     const [sub = '', ...rest] = e.args.trim().split(/\s+/);
-    await loadSettings($); // a page save applies at the next /pace command at the latest, or at the next turn
     switch (sub.toLowerCase()) {
       case 'off':
         await setState($, { kind: 'setDisabled', value: true });
-        return { text: 'pace-maker is off for this conversation.' };
+        return { text: 'Off for this conversation.' };
       case 'on':
         await setState($, { kind: 'setDisabled', value: false });
         await setState($, { kind: 'resume' });
-        return { text: 'pace-maker is on.' };
+        return { text: 'On.' };
       case 'pause': {
         const reason = rest.join(' ').trim() || 'paused';
         await setState($, { kind: 'pause', reason });
-        return { text: `Paused: ${clip(reason, 40)}` };
+        return { text: `Paused: ${clip(reason, 40).replace(/[.\s]+$/, '')}.` };
       }
       case 'resume':
         await setState($, { kind: 'resume' });
         return { text: 'Resumed.' };
-      case 'config':
-        return { text: await openSettingsPage($) };
       default:
-        return { text: 'Usage: /pace on|off|pause <reason>|resume|config' };
+        return { text: 'Usage: /pace on|off|pause <reason>|resume' };
     }
   });
 };

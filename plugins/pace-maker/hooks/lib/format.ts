@@ -4,8 +4,6 @@
 import type { View } from './view.ts';
 import type { BarStyle, Settings } from './settings.ts';
 
-export type Bar = { value: number; max: number; valueText?: string; label: string };
-
 export type Formatted = {
   kind: View['kind'];
   /** The state's glyph; empty for a bar-led progress line, where the bar is the mark. Already part of `text`. */
@@ -14,9 +12,7 @@ export type Formatted = {
   color: string | undefined;
   /** The one-line string, icon included, with no line breaks. */
   text: string;
-  /** Data for the engine's Progress element (barStyle 'native'). */
-  bar?: Bar;
-  /** A glyph bar of barWidth cells (every other barStyle). */
+  /** A glyph bar of barWidth cells. */
   glyphBar?: string;
 };
 
@@ -61,7 +57,7 @@ export function formatResetTime(resetsAt: string | undefined, now?: number): str
 const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 
 /** A glyph bar of exactly `width` cells. Whole cells only, so nothing is drawn that is not done yet. */
-export function glyphBar(fraction: number, style: Exclude<BarStyle, 'native'>, width: number): string {
+export function glyphBar(fraction: number, style: BarStyle, width: number): string {
   const w = Math.max(3, Math.round(width));
   const f = clamp01(fraction);
   const fill = (cells: number): number => (f >= 1 ? cells : Math.floor(f * cells));
@@ -95,7 +91,7 @@ const agentsWord = (n: number): string => (n === 1 ? 'subagent' : 'subagents');
  * `shown` is the fraction a smoothed bar is drawn at instead of the real one (progress only).
  */
 export function formatView(view: View, settings: Settings, now?: number, shown?: number): Formatted | null {
-  const f = settings.fields;
+  const f = { stepCount: settings.showCount, percentage: settings.showPercent, stepLabel: settings.showLabel, elapsed: settings.showElapsed, subagents: settings.showSubagents };
   switch (view.kind) {
     case 'hidden':
       return null;
@@ -107,32 +103,9 @@ export function formatView(view: View, settings: Settings, now?: number, shown?:
       if (f.percentage) parts.push(`${Math.floor(real * 100)}%`);
       if (f.stepLabel && view.label !== undefined) parts.push(oneLine(view.label));
       if (f.elapsed && view.elapsedMs > 0) parts.push(formatElapsed(view.elapsedMs));
-      const withBar = settings.display === 'bar';
-      const icon = withBar ? '' : '▶';
       const body = parts.join(SEP);
-      const out: Formatted = {
-        kind: 'progress',
-        icon,
-        color: undefined,
-        text: icon === '' ? body : body === '' ? icon : `${icon} ${body}`,
-      };
-      if (withBar) {
-        const f1 = shown === undefined ? real : clamp01(shown);
-        if (settings.barStyle === 'native') {
-          const figure: string[] = [];
-          if (f.stepCount) figure.push(`${view.done}/${view.total}`);
-          if (f.percentage) figure.push(`${Math.floor(real * 100)}%`);
-          const bar: Bar = {
-            value: f1 * view.total,
-            max: view.total > 0 ? view.total : 1,
-            label: f.stepLabel && view.label !== undefined ? oneLine(view.label) : 'Progress',
-          };
-          if (figure.length > 0) bar.valueText = figure.join(SEP);
-          out.bar = bar;
-        } else {
-          out.glyphBar = glyphBar(f1, settings.barStyle, settings.barWidth);
-        }
-      }
+      const out: Formatted = { kind: 'progress', icon: '', color: undefined, text: body };
+      out.glyphBar = glyphBar(shown === undefined ? real : clamp01(shown), settings.barStyle, settings.barWidth);
       return out;
     }
 

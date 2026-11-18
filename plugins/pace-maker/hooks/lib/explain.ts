@@ -1,9 +1,9 @@
-// The two opt-in "Uses AI" features, as pure helpers: when to ask for a stop reason, what to send, how to clean the reply,
-// and when the task-list line goes into the system prompt. Nothing here does I/O or calls a model.
+// The opt-in "Uses AI" feature, as pure helpers: when to ask for a stop reason, what to send and how to clean the reply.
+// Nothing here does I/O or calls a model.
 
 import type { View } from './view.ts';
 
-export type AiGate = { enabled: boolean; ai: { explainStop: boolean; askForTaskList: boolean } };
+export type AiGate = { enabled: boolean; explainStop: boolean };
 
 /** The call's settings, kept in one place so a test can pin them. */
 export const EXPLAIN_REQUEST = { model: 'haiku', maxTokens: 30, effort: 'low', timeoutMs: 15_000 } as const;
@@ -12,20 +12,9 @@ export const EXPLAIN_INSTRUCTION = 'Reply with the reason this turn stopped in a
 export const REASON_MAX_WORDS = 8;
 export const REASON_MAX_CHARS = 60;
 
-export const TASK_LIST_LINE = 'When a request has several steps, keep a task list with your task tool so progress can be shown.';
-export const TASK_LIST_SECTION_ID = 'pace-maker:task-list';
-/** The tools that can hold a task list; the line is only worth its tokens when the session has one of them. */
-export const TASK_TOOLS: ReadonlySet<string> = new Set(['TaskCreate', 'TodoWrite', 'mcp__ccd_turn__update_plan']);
-
 /** True only for an unexplained stop with tasks left, with the feature and the plugin on, and no reason stored yet. */
 export function shouldExplain(view: View, settings: AiGate): boolean {
-  return settings.enabled === true && settings.ai.explainStop === true && view.kind === 'stopped' && view.reason === undefined;
-}
-
-/** True when the task-list line should be added: setting and plugin on, and the offered tools include a task tool. */
-export function shouldAskForTaskList(settings: AiGate, tools: unknown): boolean {
-  if (settings.enabled !== true || settings.ai.askForTaskList !== true) return false;
-  return Array.isArray(tools) && tools.some((t) => typeof t === 'string' && TASK_TOOLS.has(t));
+  return settings.enabled === true && settings.explainStop === true && view.kind === 'stopped' && view.reason === undefined;
 }
 
 /** The whole prompt: the last answer cut to its final characters, then the instruction. Nothing else is sent. */

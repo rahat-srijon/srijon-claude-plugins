@@ -23,9 +23,8 @@ test('background shells, agents and monitors start; a plain Bash does not', asyn
   expect(ids(state)).toEqual(['shell:sh1', 'agent:ag1', 'monitor:mon1'])
 })
 
-test('TaskStop, a terminal task-notification, Stop and session end finish background items', async ($, on) => {
+test('TaskStop, a terminal task-notification and session end finish background items', async ($, on) => {
   const state = watchState(on)
-  on('classic.Stop', () => ({}))
   on('session.end', (_, e) => ({ sessionId: (e as any).sessionId ?? 's' }) as never)
   on('tool.call', (_, e) =>
     e.tool === 'Bash'
@@ -51,8 +50,6 @@ test('TaskStop, a terminal task-notification, Stop and session end finish backgr
   await note('<task-notification><task-id>b2</task-id><status>completed</status></task-notification>')
   expect(ids(state)).toEqual(['shell:b3', 'shell:b4'])
 
-  await $.classic.Stop({ stop_hook_active: false, background_tasks: [{ id: 'b4', type: 'shell', status: 'running', description: 'x' }] })
-  expect(ids(state)).toEqual(['shell:b4'])
   await $.session.end({ reason: 'other' } as never)
   expect(ids(state)).toEqual([])
 })

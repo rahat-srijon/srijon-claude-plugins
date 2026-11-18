@@ -4,10 +4,7 @@ import { defaultSettings, type Settings } from '../hooks/lib/settings.ts';
 import { easeValue, formatElapsed, formatResetTime, formatView, glyphBar, oneLine } from '../hooks/lib/format.ts';
 import type { View } from '../hooks/lib/view.ts';
 
-const S = (over: Partial<Settings> & { fields?: Partial<Settings['fields']> } = {}): Settings => {
-  const d = defaultSettings();
-  return { ...d, ...over, fields: { ...d.fields, ...over.fields } };
-};
+const S = (over: Partial<Settings> = {}): Settings => ({ ...defaultSettings(), ...over });
 const fmt = (v: View, s: Settings = S(), now?: number) => {
   const f = formatView(v, s, now);
   assert.ok(f, 'expected a formatted view');
@@ -21,38 +18,30 @@ test('hidden formats to null', () => {
   assert.equal(formatView({ kind: 'hidden' }, S()), null);
 });
 
-test('progress: text, color and native bar data', () => {
+test('progress: text, color and glyph bar (blocks by default)', () => {
   const f = fmt(progress());
   assert.equal(f.text, '3/5 · Running tests · 12m');
   assert.equal(f.color, undefined);
   assert.equal(f.kind, 'progress');
-  assert.deepEqual(f.bar, { value: 3, max: 5, valueText: '3/5', label: 'Running tests' });
-  assert.equal(f.glyphBar, undefined);
+  assert.equal(f.glyphBar, '████████████░░░░░░░░');
 });
 
 test('progress: each field toggles on its own', () => {
-  const only = (field: string) => ({
-    stepCount: false, percentage: false, stepLabel: false, elapsed: false, subagents: false, [field]: true,
+  const only = (field: string): Partial<Settings> => ({
+    showCount: false, showPercent: false, showLabel: false, showElapsed: false, showSubagents: false, [field]: true,
   });
-  assert.equal(fmt(progress(), S({ fields: only('stepCount') })).text, '3/5');
-  assert.equal(fmt(progress(), S({ fields: only('percentage') })).text, '60%');
-  assert.equal(fmt(progress(), S({ fields: only('stepLabel') })).text, 'Running tests');
-  assert.equal(fmt(progress(), S({ fields: only('elapsed') })).text, '12m');
-  assert.equal(fmt(progress(), S({ fields: { percentage: true } })).text, '3/5 · 60% · Running tests · 12m');
-  assert.equal(fmt(progress(), S({ fields: only('none') })).text, '');
+  assert.equal(fmt(progress(), S(only('showCount'))).text, '3/5');
+  assert.equal(fmt(progress(), S(only('showPercent'))).text, '60%');
+  assert.equal(fmt(progress(), S(only('showLabel'))).text, 'Running tests');
+  assert.equal(fmt(progress(), S(only('showElapsed'))).text, '12m');
+  assert.equal(fmt(progress(), S({ showPercent: true })).text, '3/5 · 60% · Running tests · 12m');
+  assert.equal(fmt(progress(), S(only('none'))).text, '');
 });
 
 test('progress: no label and no elapsed leave those parts out', () => {
   const v = progress({ elapsedMs: 0 });
   delete (v as { label?: string }).label;
   assert.equal(fmt(v).text, '3/5');
-  assert.equal(fmt(v).bar?.label, 'Progress');
-});
-
-test('progress: native bar value text follows the toggles', () => {
-  assert.equal(fmt(progress(), S({ fields: { percentage: true } })).bar?.valueText, '3/5 · 60%');
-  assert.equal(fmt(progress(), S({ fields: { stepCount: false } })).bar?.valueText, undefined);
-  assert.equal(fmt(progress(), S({ fields: { stepLabel: false } })).bar?.label, 'Progress');
 });
 
 test('progress: every glyph bar style has exactly barWidth cells', () => {
@@ -67,7 +56,6 @@ test('progress: every glyph bar style has exactly barWidth cells', () => {
     const f = fmt(v, S({ barStyle, barWidth: 20 }));
     assert.equal(f.glyphBar, want, barStyle);
     assert.equal([...(f.glyphBar ?? '')].length, 20, barStyle);
-    assert.equal(f.bar, undefined);
   }
 });
 
@@ -83,26 +71,15 @@ test('progress: glyph bars honor barWidth and the 0 and full ends', () => {
   assert.equal(glyphBar(NaN, 'thin', 10), '─'.repeat(10));
 });
 
-test('progress: text-only display has no bar and carries an icon', () => {
-  const f = fmt(progress(), S({ display: 'text' }));
-  assert.equal(f.bar, undefined);
-  assert.equal(f.glyphBar, undefined);
-  assert.equal(f.icon, '▶');
-  assert.equal(f.text, '▶ 3/5 · Running tests · 12m');
-  assert.equal(fmt(progress(), S({ display: 'text', barStyle: 'blocks' })).glyphBar, undefined);
-});
-
 test('progress: a smoothed fraction moves the bar, not the text', () => {
-  const f = formatView(progress(), S(), 0, 0.3);
-  assert.equal(f?.bar?.value, 1.5);
+  const f = formatView(progress(), S({ barWidth: 10 }), 0, 0.3);
   assert.equal(f?.text, '3/5 · Running tests · 12m');
-  assert.equal(formatView(progress(), S({ barStyle: 'blocks', barWidth: 10 }), 0, 0.3)?.glyphBar, '███░░░░░░░');
+  assert.equal(f?.glyphBar, '███░░░░░░░');
 });
 
 test('progress: zero total keeps a valid bar', () => {
   const f = fmt(progress({ done: 0, total: 0, fraction: 0 }));
-  assert.equal(f.bar?.max, 1);
-  assert.equal(f.bar?.value, 0);
+  assert.equal(f.glyphBar, '░'.repeat(20));
 });
 
 test('working', () => {
@@ -110,11 +87,10 @@ test('working', () => {
   const f = fmt(v);
   assert.equal(f.text, '● Working · npm test in background · 4m');
   assert.equal(f.color, 'subtle');
-  assert.equal(f.bar, undefined);
   assert.equal(fmt({ ...v, subagents: 2 }).text, '● Working · npm test in background · 4m · 2 subagents');
   assert.equal(fmt({ ...v, subagents: 1 }).text, '● Working · npm test in background · 4m · 1 subagent');
-  assert.equal(fmt({ ...v, subagents: 2 }, S({ fields: { subagents: false } })).text, '● Working · npm test in background · 4m');
-  assert.equal(fmt({ ...v, subagents: 2 }, S({ fields: { elapsed: false } })).text, '● Working · npm test in background · 2 subagents');
+  assert.equal(fmt({ ...v, subagents: 2 }, S({ showSubagents: false })).text, '● Working · npm test in background · 4m');
+  assert.equal(fmt({ ...v, subagents: 2 }, S({ showElapsed: false })).text, '● Working · npm test in background · 2 subagents');
   assert.equal(fmt({ kind: 'working', elapsedMs: 0, subagents: 0 }).text, '● Working');
 });
 
@@ -131,8 +107,8 @@ test('done', () => {
   const f = fmt(v);
   assert.equal(f.text, '✓ Done · 5/5 · 18m');
   assert.equal(f.color, 'success');
-  assert.equal(fmt(v, S({ fields: { elapsed: false } })).text, '✓ Done · 5/5');
-  assert.equal(fmt(v, S({ fields: { stepCount: false } })).text, '✓ Done · 18m');
+  assert.equal(fmt(v, S({ showElapsed: false })).text, '✓ Done · 5/5');
+  assert.equal(fmt(v, S({ showCount: false })).text, '✓ Done · 18m');
   assert.equal(fmt({ ...v, durationMs: 0 }).text, '✓ Done · 5/5');
 });
 
